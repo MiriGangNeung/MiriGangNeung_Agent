@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Secrets and local runtime data
+.env
+*.local
+
+# Temporary image storage (사용자 사진이 들어가므로 절대 커밋하지 않는다)
+tmp/
+/tmp-images/
+assets/backgrounds/*.jpg
+assets/backgrounds/*.jpeg
+assets/backgrounds/*.png
+!assets/backgrounds/.gitkeep
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
