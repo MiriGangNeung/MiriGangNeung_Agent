@@ -111,3 +111,7 @@ tests/
 - `GOOGLE_API_KEY`, `GEMINI_IMAGE_MODEL`, `GEMINI_VISION_MODEL`
 - `REDIS_HOST` — 비우면 인메모리 JobStore로 폴백
 - `DAILY_GENERATION_BUDGET`, `RATE_LIMIT_PER_SESSION_PER_HOUR` — 비용·남용 제어
+- `FACE_MODEL_PATH` — 얼굴 검출 모델(B3/B4). `models/face_detection_yunet_2023mar.onnx`
+  (YuNet, [opencv_zoo](https://github.com/opencv/opencv_zoo) 제공, Apache-2.0)을 리포에
+  커밋해 뒀고 기본값도 그쪽을 가리킨다. 비우면 OpenCV 번들 Haar cascade로 폴백한다
+  (추가 파일은 필요 없지만 정확도가 낮다). 모델 로드에 실패해도 자동으로 Haar로 폴백한다.

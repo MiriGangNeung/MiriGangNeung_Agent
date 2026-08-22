@@ -27,7 +27,7 @@ from app.providers.base import (
     ProviderTimeout,
     QualityVerdict,
 )
-from app.schemas.generation import AspectRatio, SafetyStatus, StyleTag
+from app.schemas.generation import AspectRatio, SafetyStatus, StyleTag, VariationMode
 
 
 def _png(width: int, height: int) -> bytes:
@@ -239,6 +239,33 @@ def test_prompt_uses_high_confidence_style_tags_only():
 
     assert "감성적" in prompt
     assert "무시될태그" not in prompt
+
+
+def test_prompt_default_variation_mode_has_no_regeneration_language():
+    place = PlaceContext("안목해변", "동해 바다가 보이는 해변", "맑은 낮의 자연광")
+
+    prompt = build_composition_prompt(place, AspectRatio.PORTRAIT, [], VariationMode.SAME)
+
+    assert "regeneration request" not in prompt
+    assert "{variation_direction}" not in prompt
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_phrase"),
+    [
+        (VariationMode.NEW_POSE, "different pose"),
+        (VariationMode.NEW_MOOD, "mood and color tone"),
+    ],
+)
+def test_prompt_injects_variation_direction_for_regeneration(mode, expected_phrase):
+    """요구사항 E4: 재생성 시 '구도, 스타일만 살짝 조정' 옵션이 프롬프트에 반영돼야 한다."""
+    place = PlaceContext("안목해변", "동해 바다가 보이는 해변", "맑은 낮의 자연광")
+
+    prompt = build_composition_prompt(place, AspectRatio.PORTRAIT, [], mode)
+
+    assert "regeneration request" in prompt
+    assert expected_phrase in prompt
+    assert "{variation_direction}" not in prompt
 
 
 def test_resolve_place_context_falls_back_to_backend_supplied_fields():

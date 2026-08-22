@@ -66,6 +66,10 @@ class GeminiProvider(ImageCompositionProvider):
         self.image_model = settings.gemini_image_model
         self.vision_model = settings.gemini_vision_model
 
+    @property
+    def estimated_cost_usd(self) -> float | None:
+        return _APPROX_COST_PER_IMAGE_USD.get(self.image_model)
+
     # ── 합성 (E1~E4) ────────────────────────────────────────
     async def compose(self, request: CompositionRequest) -> CompositionOutput:
         contents = [
@@ -103,7 +107,7 @@ class GeminiProvider(ImageCompositionProvider):
         return CompositionOutput(
             image=image_bytes,
             mime=mime,
-            estimated_cost_usd=_APPROX_COST_PER_IMAGE_USD.get(self.image_model),
+            estimated_cost_usd=self.estimated_cost_usd,
         )
 
     # ── 스타일 분석 (B6) ────────────────────────────────────

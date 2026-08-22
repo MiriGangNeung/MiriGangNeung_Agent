@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 from PIL import Image
 
+from app.core.config import Settings
 from app.core.errors import AiServiceError
 from app.pipeline import validate as validate_module
 from app.pipeline.validate import FaceBox, validate_photo
@@ -97,3 +99,25 @@ def test_accepts_sharp_unoccluded_face(monkeypatch):
     assert report.format == "PNG"
     assert report.sharpness > validate_module.BLUR_VARIANCE_THRESHOLD
     assert report.face.w == 200
+
+
+# ── 얼굴 검출 모델 경로 해석 (YuNet) ─────────────────────────
+def test_resolved_face_model_path_is_empty_when_unset():
+    assert Settings(face_model_path="").resolved_face_model_path == ""
+
+
+def test_resolved_face_model_path_resolves_relative_to_repo_root():
+    """리포에 커밋된 YuNet 모델을 cwd와 무관하게 찾을 수 있어야 한다."""
+    settings = Settings(face_model_path="models/face_detection_yunet_2023mar.onnx")
+
+    resolved = settings.resolved_face_model_path
+
+    assert resolved.endswith("models/face_detection_yunet_2023mar.onnx")
+    assert Path(resolved).is_absolute()
+
+
+def test_bundled_yunet_model_file_exists_at_the_default_path():
+    """`.env.example`의 FACE_MODEL_PATH 기본값이 실제로 커밋된 파일을 가리켜야 한다."""
+    settings = Settings(face_model_path="models/face_detection_yunet_2023mar.onnx")
+
+    assert Path(settings.resolved_face_model_path).is_file()

@@ -5,7 +5,9 @@
 얼굴 검출기:
 - 기본은 OpenCV에 번들된 Haar cascade라 추가 다운로드 없이 동작한다.
 - `FACE_MODEL_PATH`에 YuNet ONNX(face_detection_yunet_2023mar.onnx)를 놓으면 그쪽을 쓴다.
-  YuNet이 정확도가 높으므로 운영 환경에서는 모델 파일을 주입하는 편이 좋다.
+  YuNet이 정확도가 높으므로 운영 환경에서는 모델 파일을 주입하는 편이 좋다. 리포에
+  `models/face_detection_yunet_2023mar.onnx`를 커밋해 뒀고, `.env.example`의 기본값도
+  그쪽을 가리킨다.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import cv2
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
+from app.core.config import get_settings
 from app.core.errors import AiServiceError
 
 logger = logging.getLogger(__name__)
@@ -125,7 +128,7 @@ def _to_bgr_matrix(data: bytes) -> np.ndarray:
 
 
 def detect_faces(matrix: np.ndarray) -> list[FaceBox]:
-    model_path = os.environ.get("FACE_MODEL_PATH", "")
+    model_path = get_settings().resolved_face_model_path
     if model_path and os.path.isfile(model_path):
         try:
             return _detect_with_yunet(matrix, model_path)

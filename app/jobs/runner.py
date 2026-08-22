@@ -114,7 +114,9 @@ class GenerationRunner:
             place_region=record.place_region,
             place_description=record.place_description,
         )
-        prompt = build_composition_prompt(place, record.aspect_ratio, record.style_tags)
+        prompt = build_composition_prompt(
+            place, record.aspect_ratio, record.style_tags, record.variation_mode
+        )
 
         output, attempts = await compose_with_retry(
             self.provider,

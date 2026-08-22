@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     ai_provider: str = "mock"
     google_api_key: str = ""
     gemini_image_model: str = "gemini-3.1-flash-image"
-    gemini_vision_model: str = "gemini-3.1-flash"
+    gemini_vision_model: str = "gemini-3.1-flash-lite"
     provider_timeout_seconds: float = 120.0
     provider_max_retries: int = 2
 
@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     daily_generation_budget: int = 500
     rate_limit_per_session_per_hour: int = 10
 
+    # 얼굴 검출 (B3/B4) — 비우면 OpenCV 번들 Haar cascade로 폴백
+    face_model_path: str = ""
+
     @property
     def auth_enabled(self) -> bool:
         """AI_API_KEY가 비어 있으면 로컬 개발로 간주하고 인증을 끈다."""
@@ -53,6 +56,16 @@ class Settings(BaseSettings):
     @property
     def backgrounds_dir(self) -> Path:
         return REPO_ROOT / "assets" / "backgrounds"
+
+    @property
+    def resolved_face_model_path(self) -> str:
+        """상대경로면 리포 루트 기준으로 해석한다 (cwd가 어디든 동작하도록)."""
+        if not self.face_model_path:
+            return ""
+        path = Path(self.face_model_path)
+        if not path.is_absolute():
+            path = REPO_ROOT / path
+        return str(path)
 
 
 @lru_cache

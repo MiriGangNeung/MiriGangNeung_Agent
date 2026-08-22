@@ -86,6 +86,7 @@ Base path: `/v1` (헬스체크만 예외로 루트의 `/health`)
 | `photo` | 예 | 사용자 사진 파일 (JPG/PNG/WEBP, 최대 10MB) |
 | `onePickPlaceId` | 예 | 백엔드 `Place.id` (UUID) |
 | `aspectRatio` | 아니오 (기본 `4:5`) | `1:1` \| `4:5` \| `9:16` |
+| `variationMode` | 아니오 (기본 `same`) | `same` \| `new_pose` \| `new_mood`. 요구사항 E4 재생성 옵션 중 "구도, 스타일만 살짝 조정"에 대응한다. `new_pose`/`new_mood`는 프롬프트에 변형 지시문을 추가하고, `idempotencyKey`를 명시하지 않아도 자동으로 새 Job이 된다(동일 사진+장소+비율이라도 `same`과는 다른 요청으로 취급). "다른 배경 선택" 옵션은 이 필드가 아니라 `onePickPlaceId`/`background`를 바꿔 재요청하면 된다 |
 | `background` | **사실상 필수** | 배경 이미지 파일. 백엔드가 `Place.thumbnailUrl`/`PlaceImage.imageUrl`(한국관광공사 이미지 URL)에서 가져와 전달한다. `AI_PROVIDER=mock`일 때만 생략 가능(플레이스홀더로 대체) — `gemini` 등 실 프로바이더에서 생략하면 `400 BACKGROUND_REQUIRED` |
 | `placeName` | 아니오 | `Place.name`. 프롬프트에 장소명으로 주입된다 |
 | `placeRegion` | 아니오 | `Place.region`. 없으면 장면 묘사에 활용 |
@@ -112,17 +113,27 @@ Base path: `/v1` (헬스체크만 예외로 루트의 `/health`)
   "metadata": {
     "provider": "gemini",
     "model": "gemini-3.1-flash-image",
-    "promptVersion": "v1",
+    "promptVersion": "v3",
     "onePickPlaceId": "9c1d4f2e-58a1-4b3a-9d2e-1f6a2b7c9d10",
     "createdAt": "2026-08-08T12:00:00+00:00",
     "completedAt": null,
     "durationMs": null,
     "styleTags": [],
-    "estimatedCostUsd": null,
+    "estimatedCostUsd": 0.067,
     "attempts": 0
   }
 }
 ```
+
+`estimatedCostUsd`는 요청 접수 시점(202 응답)부터 모델 기준 근사 단가로 채워진다(검토 총평
+§2-7) — 정확한 정산이 아니라 단위경제성 추적용 근사치다. `AI_PROVIDER=mock`이면 `0.0`.
+합성이 끝나면 공급자가 실제로 돌려준 값으로 다시 채워진다(보통 같은 값).
+
+`promptVersion`이 `v3`(2026-08-22~)로 바뀌었다 — API 필드 변화는 없지만, 결과물의 톤이
+바뀌었다: 인물의 포즈·표정을 원본 사진 그대로가 아니라 장면에 맞게 자연스럽게 조정하고
+(예: 정면 무표정 대신 자연스러운 미소, 풍경을 바라보는 자세), 색보정도 인스타그램풍
+여행 사진 톤으로 조정한다. 신원(얼굴 생김새·의상·체형)은 이전과 동일하게 보존된다.
+상세는 `docs/PROMPTS.md`의 v3 항목 참고.
 
 **오류 응답** — 아래 오류 코드 표 참고. 사진 유효성 검사(B3/B4)에 걸리면 Job을 만들지 않고
 바로 4xx를 반환하므로, 백엔드는 이 시점의 오류를 사용자에게 "재업로드 방법 안내"로 그대로
@@ -150,7 +161,7 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
   "metadata": {
     "provider": "gemini",
     "model": "gemini-3.1-flash-image",
-    "promptVersion": "v1",
+    "promptVersion": "v3",
     "onePickPlaceId": "9c1d4f2e-58a1-4b3a-9d2e-1f6a2b7c9d10",
     "createdAt": "2026-08-08T12:00:00+00:00",
     "completedAt": "2026-08-08T12:00:24+00:00",
@@ -262,6 +273,18 @@ curl -H "X-API-Key: $AI_API_KEY" \
      -F placeName=안목해변 \
      -F placeDescription="동해 바다와 백사장이 펼쳐진 해변" \
      -F aspectRatio=4:5 \
+     http://localhost:8100/v1/generations
+```
+
+"구도, 스타일만 살짝 조정" 재생성(E4)을 테스트할 때는 `variationMode`를 함께 보낸다 —
+`idempotencyKey` 없이도 원본 요청과 자동으로 다른 Job이 된다.
+
+```bash
+curl -H "X-API-Key: $AI_API_KEY" \
+     -F photo=@tests/fixtures/person.jpg \
+     -F onePickPlaceId=9c1d4f2e-58a1-4b3a-9d2e-1f6a2b7c9d10 \
+     -F aspectRatio=4:5 \
+     -F variationMode=new_pose \
      http://localhost:8100/v1/generations
 ```
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ERROR_SPECS, SAFETY_ERROR_CODES, AiServiceError
-from app.schemas.generation import STAGE_LABELS, AspectRatio, JobStatus
+from app.schemas.generation import STAGE_LABELS, AspectRatio, JobStatus, VariationMode
 
 
 def test_status_values_match_backend_enum():
@@ -111,6 +111,12 @@ def test_error_payload_shape():
 def test_supported_aspect_ratios_match_requirement_e4():
     """요구사항 E4: 1:1, 4:5, 9:16 을 지원해야 한다."""
     assert {r.value for r in AspectRatio} == {"1:1", "4:5", "9:16"}
+
+
+def test_variation_mode_values_match_ai_api_contract():
+    """요구사항 E4: docs/AI_API_CONTRACT.md의 variationMode 필드 값과 일치해야 한다."""
+    assert {m.value for m in VariationMode} == {"same", "new_pose", "new_mood"}
+    assert VariationMode.SAME.value == "same"
 
 
 def test_background_required_error_is_not_retryable():
