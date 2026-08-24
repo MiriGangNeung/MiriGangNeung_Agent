@@ -12,11 +12,11 @@ from functools import lru_cache
 
 from app.core.config import get_settings
 from app.places.backgrounds import PlaceContext
-from app.schemas.generation import AspectRatio, StyleTag
+from app.schemas.generation import AspectRatio, StyleTag, VariationMode
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v3"
 
-COMPOSITION_TEMPLATE = "composition_v1.md"
+COMPOSITION_TEMPLATE = "composition_v3.md"
 QUALITY_CHECK_TEMPLATE = "quality_check_v1.md"
 STYLE_ANALYSIS_TEMPLATE = "style_analysis_v1.md"
 
@@ -34,6 +34,7 @@ def build_composition_prompt(
     place: PlaceContext,
     aspect_ratio: AspectRatio,
     style_tags: list[StyleTag],
+    variation_mode: VariationMode = VariationMode.SAME,
 ) -> str:
     template = load_template(COMPOSITION_TEMPLATE)
     return (
@@ -42,6 +43,7 @@ def build_composition_prompt(
         .replace("{lighting_hint}", place.lighting_hint)
         .replace("{style_direction}", _style_direction(style_tags))
         .replace("{aspect_ratio}", aspect_ratio.value)
+        .replace("{variation_direction}", _variation_direction(variation_mode))
     )
 
 
@@ -68,3 +70,27 @@ def _style_direction(style_tags: list[StyleTag]) -> str:
         f"{parts}. "
         "Keep the composited result consistent with that mood and outfit."
     )
+
+
+def _variation_direction(mode: VariationMode) -> str:
+    """요구사항 E4 재생성 옵션 중 '구도, 스타일만 살짝 조정'을 프롬프트로 옮긴다.
+
+    '다른 배경 선택' 옵션은 onePickPlaceId/background를 바꿔 재요청하면 되므로 별도
+    처리가 필요 없다.
+    """
+    if mode is VariationMode.NEW_POSE:
+        return (
+            "This is a regeneration request. Use a noticeably different pose, body "
+            "angle and framing than a plain straight-on portrait — for example a "
+            "three-quarter turn, a walking pose, or looking off to the side — while "
+            "keeping the same person and the same background location."
+        )
+    if mode is VariationMode.NEW_MOOD:
+        return (
+            "This is a regeneration request. Shift the photographic mood and color "
+            "tone noticeably from a plain snapshot — for example warmer or cooler "
+            "light, different time-of-day feel, or higher/lower contrast — while "
+            "keeping the same person, the same general pose, and the same background "
+            "location."
+        )
+    return "Keep the composition natural and typical for a travel snapshot at this location."

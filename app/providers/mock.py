@@ -28,6 +28,10 @@ class MockProvider(ImageCompositionProvider):
     image_model = "mock-composite-v1"
     vision_model = "mock-vision-v1"
 
+    @property
+    def estimated_cost_usd(self) -> float | None:
+        return 0.0
+
     async def compose(self, request: CompositionRequest) -> CompositionOutput:
         await asyncio.sleep(MOCK_COMPOSE_DELAY_SECONDS)
 
@@ -47,7 +51,9 @@ class MockProvider(ImageCompositionProvider):
 
         buffer = io.BytesIO()
         canvas.save(buffer, format="PNG")
-        return CompositionOutput(image=buffer.getvalue(), estimated_cost_usd=0.0)
+        return CompositionOutput(
+            image=buffer.getvalue(), estimated_cost_usd=self.estimated_cost_usd
+        )
 
     async def analyze_style(self, image: bytes, mime: str) -> list[StyleTag]:
         return [

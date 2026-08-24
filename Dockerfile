@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY prompts ./prompts
 COPY assets ./assets
+COPY models ./models
 COPY main.py .
 
 ENV PORT=8100

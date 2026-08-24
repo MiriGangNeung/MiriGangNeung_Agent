@@ -21,7 +21,7 @@ from app.pipeline.preprocess import preprocess_photo
 from app.pipeline.prompt import PROMPT_VERSION
 from app.pipeline.validate import validate_photo
 from app.places.backgrounds import load_dev_background_image, placeholder_background
-from app.schemas.generation import AspectRatio, GenerationJobResponse, JobStatus
+from app.schemas.generation import AspectRatio, GenerationJobResponse, JobStatus, VariationMode
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,14 @@ async def create_generation(
     photo: UploadFile = File(..., description="사용자 사진 (JPG/PNG/WEBP, 최대 10MB)"),
     onePickPlaceId: str = Form(..., description="원픽 관광지 ID (백엔드 Place.id UUID)"),
     aspectRatio: AspectRatio = Form(default=AspectRatio.PORTRAIT),
+    variationMode: VariationMode = Form(
+        default=VariationMode.SAME,
+        description=(
+            "요구사항 E4 재생성 옵션 중 '구도, 스타일만 살짝 조정'. same(기본, 동일 요청은 "
+            "재사용) | new_pose(다른 구도/포즈) | new_mood(다른 분위기/톤). '다른 배경 선택' "
+            "옵션은 onePickPlaceId/background를 바꿔 재요청하면 된다."
+        ),
+    ),
     background: UploadFile | None = File(
         default=None,
         description=(
@@ -68,7 +76,11 @@ async def create_generation(
         raise AiServiceError("INVALID_REQUEST", "사진 파일이 비어 있습니다.")
 
     # 동일 요청 재생성 차단 (검토 총평 §2-7). 명시적 키가 없으면 입력 해시로 만든다.
-    dedupe_key = idempotencyKey or _auto_idempotency_key(data, onePickPlaceId, aspectRatio)
+    # variationMode도 키에 포함해, 백엔드가 idempotencyKey를 따로 관리하지 않아도
+    # '구도/분위기 조정' 재생성(E4)이 자동으로 새 Job이 되도록 한다.
+    dedupe_key = idempotencyKey or _auto_idempotency_key(
+        data, onePickPlaceId, aspectRatio, variationMode
+    )
     existing_id = runtime.store.find_by_idempotency_key(dedupe_key)
     if existing_id:
         existing = runtime.store.get(existing_id)
@@ -103,6 +115,7 @@ async def create_generation(
         provider_job_id=uuid.uuid4().hex,
         one_pick_place_id=onePickPlaceId.strip(),
         aspect_ratio=aspectRatio,
+        variation_mode=variationMode,
         provider=runtime.provider.name,
         model=runtime.provider.image_model,
         prompt_version=PROMPT_VERSION,
@@ -113,6 +126,9 @@ async def create_generation(
         background_key=runtime.images.save_input(background_bytes, ".png"),
         idempotency_key=dedupe_key,
         status=JobStatus.QUEUED,
+        # 요청 접수 시점에 근사 비용을 미리 채운다 (검토 총평 §2-7). 합성이 끝나면
+        # runner.py가 provider가 실제로 돌려준 값으로 다시 덮어쓴다.
+        estimated_cost_usd=runtime.provider.estimated_cost_usd,
     )
     logger.info("배경 이미지 출처: %s", background_source)
 
@@ -173,14 +189,19 @@ async def cancel_generation(
     return _respond(record)
 
 
-def _auto_idempotency_key(data: bytes, one_pick_place_id: str, aspect_ratio: AspectRatio) -> str:
-    """입력 사진 + 장소 + 비율이 같으면 같은 요청으로 본다.
+def _auto_idempotency_key(
+    data: bytes,
+    one_pick_place_id: str,
+    aspect_ratio: AspectRatio,
+    variation_mode: VariationMode,
+) -> str:
+    """입력 사진 + 장소 + 비율 + 변형모드가 같으면 같은 요청으로 본다.
 
-    사용자가 '다시 생성하기'를 연타해도 동일 조건이면 새로 생성하지 않는다.
-    구도·분위기를 바꾼 재생성은 백엔드가 명시적 idempotencyKey를 다르게 주면 된다.
+    사용자가 '다시 생성하기(변형 없음)'를 연타해도 동일 조건이면 새로 생성하지 않는다.
+    variationMode를 new_pose/new_mood로 바꿔 보내면 자동으로 새 Job이 된다(E4).
     """
     digest = hashlib.sha256(data).hexdigest()
-    return f"{digest}:{one_pick_place_id}:{aspect_ratio.value}"
+    return f"{digest}:{one_pick_place_id}:{aspect_ratio.value}:{variation_mode.value}"
 
 
 async def _resolve_background(

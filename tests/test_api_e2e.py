@@ -68,7 +68,7 @@ def test_meta_reports_supported_aspect_ratios(client):
     payload = client.get("/v1/meta").json()
 
     assert payload["supportedAspectRatios"] == ["1:1", "4:5", "9:16"]
-    assert payload["promptVersion"] == "v1"
+    assert payload["promptVersion"] == "v3"
     assert payload["provider"] == "mock"
 
 
@@ -82,7 +82,9 @@ def test_full_generation_roundtrip(client):
     assert body["coarseStatus"] == "RUNNING"
     assert body["progress"] == 0
     assert body["metadata"]["onePickPlaceId"] == "anmok-beach"
-    assert body["metadata"]["promptVersion"] == "v1"
+    assert body["metadata"]["promptVersion"] == "v3"
+    # 검토 총평 §2-7: 생성 완료 전, 요청 접수 시점에 이미 근사 비용이 채워져 있어야 한다.
+    assert body["metadata"]["estimatedCostUsd"] == 0.0
 
     final = _poll_until_terminal(client, job_id)
     assert final["status"] == JobStatus.DONE.value, final.get("error")
@@ -153,6 +155,37 @@ def test_explicit_idempotency_key_separates_jobs(client):
     second = _submit(client, idempotencyKey="try-2").json()["providerJobId"]
 
     assert first != second
+
+
+def test_variation_mode_regeneration_is_not_deduplicated_with_default(client):
+    """요구사항 E4: '구도, 스타일만 살짝 조정' 재생성은 idempotencyKey 없이도 새 Job이어야 한다."""
+    default = _submit(client).json()["providerJobId"]
+    new_pose = _submit(client, variationMode="new_pose").json()["providerJobId"]
+    new_mood = _submit(client, variationMode="new_mood").json()["providerJobId"]
+
+    assert len({default, new_pose, new_mood}) == 3
+
+
+def test_variation_mode_regeneration_completes_successfully(client):
+    job_id = _submit(client, variationMode="new_pose").json()["providerJobId"]
+
+    final = _poll_until_terminal(client, job_id)
+
+    assert final["status"] == JobStatus.DONE.value, final.get("error")
+
+
+def test_repeating_same_variation_mode_is_still_deduplicated(client):
+    """same/새 변형 모두 반복 요청은 그대로 재사용돼야 한다 (비용 폭증 방지)."""
+    first = _submit(client, variationMode="new_mood").json()["providerJobId"]
+    second = _submit(client, variationMode="new_mood").json()["providerJobId"]
+
+    assert first == second
+
+
+def test_invalid_variation_mode_is_rejected(client):
+    response = _submit(client, variationMode="not-a-real-mode")
+
+    assert response.status_code == 422
 
 
 def test_missing_place_id_is_rejected(client):

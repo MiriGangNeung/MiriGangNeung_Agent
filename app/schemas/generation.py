@@ -82,6 +82,19 @@ _RATIO_WH: dict[AspectRatio, tuple[int, int]] = {
 }
 
 
+class VariationMode(str, Enum):
+    """요구사항 E4: '허용된 횟수 내에서 구도나 분위기를 변경해 다시 생성'.
+
+    UI 설계서 재생성 버튼의 두 옵션 중 '다른 배경 선택'은 onePickPlaceId/background를
+    바꿔 다시 요청하면 되므로 이미 지원된다. 이 값은 나머지 옵션인
+    '구도, 스타일만 살짝 조정'에 대응한다.
+    """
+
+    SAME = "same"
+    NEW_POSE = "new_pose"
+    NEW_MOOD = "new_mood"
+
+
 class StyleTag(BaseModel):
     """요구사항 B6: 태그 + 신뢰도 점수."""
 

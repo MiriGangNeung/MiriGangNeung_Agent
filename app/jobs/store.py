@@ -24,6 +24,7 @@ from app.schemas.generation import (
     SafetyReport,
     SafetyStatus,
     StyleTag,
+    VariationMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ class JobRecord(BaseModel):
     status: JobStatus = JobStatus.QUEUED
     one_pick_place_id: str
     aspect_ratio: AspectRatio
+    variation_mode: VariationMode = VariationMode.SAME
     provider: str
     model: str
     prompt_version: str

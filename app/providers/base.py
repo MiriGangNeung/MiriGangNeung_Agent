@@ -46,6 +46,16 @@ class ImageCompositionProvider(abc.ABC):
     image_model: str
     vision_model: str
 
+    @property
+    def estimated_cost_usd(self) -> float | None:
+        """생성 전 요청 접수 시점에 알 수 있는 근사 비용 (검토 총평 §2-7).
+
+        모델별 정액 근사치가 없는 공급자는 None을 반환한다. 실제 합성 이후의 값(공급자가
+        `CompositionOutput.estimated_cost_usd`로 돌려주는 값)이 더 정확하면 그쪽이 최종
+        기록을 덮어쓴다.
+        """
+        return None
+
     @abc.abstractmethod
     async def compose(self, request: CompositionRequest) -> CompositionOutput:
         """인물 사진 + 배경을 합성한다 (요구사항 E1~E4)."""
