@@ -86,13 +86,33 @@ app/
 ├── jobs/        # JobStore(Redis/인메모리), 비동기 실행기
 ├── pipeline/    # 검증/전처리/스타일분석/프롬프트/합성/안전성/마감
 ├── providers/   # Provider 어댑터 (gemini / mock) — 새 공급자는 여기만 구현
-├── places/      # 관광지 배경 카탈로그
+├── places/      # 관광지 배경 카탈로그 + VLM 사전 분석 리포트 로더
 └── storage/     # 임시 이미지 저장 + TTL 정리
 prompts/         # 프롬프트 원문 (버전별 .md)
+scripts/         # 요청 경로와 분리된 오프라인 배치 도구 (예: analyze_top_places.py)
 assets/backgrounds/  # 배경 이미지 카탈로그 (실제 이미지 파일은 커밋하지 않음)
+assets/places/       # 장소 특징 VLM 사전 분석 산출물 (place_insights.json)
 docs/            # AI_API_CONTRACT, PROJECT_STATUS, WORK_LOG, adr/
 tests/
 ```
+
+## 장소 특징 사전 분석 (선택)
+
+`resolve_place_context()`는 백엔드가 보내는 `placeDescription` 대신, Type1(변경 허용)
+이미지가 가장 많은 상위 10개 장소를 VLM으로 미리 분석해둔 리포트
+(`assets/places/place_insights.json`)를 우선 사용한다. 상세: `docs/adr/
+0003-place-image-vlm-analysis.md`.
+
+```bash
+export HF_TOKEN=<huggingface.co에서 무료 발급>
+.venv/bin/python scripts/analyze_top_places.py \
+    --backend-base-url http://localhost:8080 \
+    --top-n 10 --images-per-place 5
+```
+
+이 스크립트는 요청 처리 경로와 분리된 오프라인 도구다 — 실행하지 않아도, 또는
+결과 파일이 비어 있어도 서비스는 정상 동작한다(다음 우선순위로 폴백). VLM은 로컬이
+아니라 Hugging Face 원격 Inference API를 호출하므로 GPU/대용량 RAM이 필요 없다.
 
 ## 테스트
 

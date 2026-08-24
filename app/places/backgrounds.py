@@ -29,6 +29,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.core.config import get_settings
+from app.places.insights import get_place_insight
 
 logger = logging.getLogger(__name__)
 
@@ -129,13 +130,22 @@ def resolve_place_context(
     우선순위:
     1. 개발용 카탈로그가 `usable=true`로 매칭되면 그 장면/조명 힌트를 쓴다
        (로컬 개발·데모 전용, 운영에서는 사실상 발생하지 않는다).
-    2. 백엔드가 `placeName`/`placeRegion`/`placeDescription`을 보냈으면 그 값을
+    2. `place_insights.json`에 실제 `Place.id`로 매칭되는 VLM 사전 분석 리포트가
+       있으면 그 장면/조명/분위기를 쓴다 — Type1(변경 허용) 라이선스 이미지가 많은
+       상위 N개 장소만 대상이라 모든 요청에 매칭되지는 않는다 (`docs/adr/
+       0003-place-image-vlm-analysis.md`).
+    3. 백엔드가 `placeName`/`placeRegion`/`placeDescription`을 보냈으면 그 값을
        쓴다 — 백엔드 `Place` 테이블에 이미 있는 정보이므로 별도 조회 없이 활용한다.
-    3. 둘 다 없으면 범용 문구로 채운다.
+    4. 셋 다 없으면 범용 문구로 채운다.
     """
     dev_place = get_dev_place(one_pick_place_id)
     if dev_place is not None and dev_place.usable:
         return PlaceContext(dev_place.name, dev_place.scene_hint, dev_place.lighting_hint)
+
+    insight = get_place_insight(one_pick_place_id)
+    if insight is not None:
+        name = place_name or insight.place_name
+        return PlaceContext(name, insight.as_scene_hint(), insight.lighting_hint)
 
     name = place_name or "강릉의 관광지"
     if place_description:

@@ -1,4 +1,4 @@
-Last Updated: 2026-08-09 21:10 KST
+Last Updated: 2026-08-24 KST
 Last Updated By: claude
 
 # 현재 구현 상태
@@ -15,6 +15,14 @@ Gemini provider는 실제 API 호출 코드까지 작성됐지만 **실제 키�
 `Place.id`(UUID)라는 것을 확인했다. 이에 맞춰 `background`를 실 프로바이더에서는
 사실상 필수로 바꾸고(없으면 `BACKGROUND_REQUIRED`로 명확히 실패), 로컬 배경 카탈로그는
 `AI_PROVIDER=mock` 전용으로 용도를 명확히 했다.
+
+이어서 Tour API의 저작권 유형 코드(`cpyrhtDivCd`/`copyrightCode`)가 `Type1`(출처표시만,
+변경 허용)과 `Type3`(변경금지) 두 가지뿐이라는 것을 확인해, AI 합성에는 `Type1`만 쓸 수
+있다는 제약을 계약 문서에 명시했다. 또한 백엔드가 이제 장소당 여러 장의 갤러리 이미지를
+갖고 있다는 점을 활용해, Type1 이미지가 가장 많은 상위 10개 장소를 Hugging Face 무료
+VLM으로 오프라인 사전 분석해 장면·조명·분위기 리포트를 만드는 배치 파이프라인을 추가했다
+(ADR-0003). 이 리포트는 `resolve_place_context()`가 백엔드의 짧은 `placeDescription`보다
+우선해서 쓴다.
 
 ## 완료된 것
 
@@ -39,19 +47,35 @@ Gemini provider는 실제 API 호출 코드까지 작성됐지만 **실제 키�
     `Place` 정보를 프롬프트 힌트로 바로 활용 (`app/places/backgrounds.py::resolve_place_context`).
   - 로컬 카탈로그(`assets/backgrounds/backgrounds.json`)는 `AI_PROVIDER=mock` 전용으로
     명확히 하고, 라이선스 미확인 상태를 반영해 전 항목 `usable: false`로 고정.
-- pytest 88개 통과, ruff lint/format 통과
+- pytest 101개 통과, ruff lint/format 통과
 - Docker 빌드·기동 검증 완료 (단일 컨테이너, mock provider): `/health`·`/v1/meta` 정상
   응답, `POST /v1/generations` 오류 계약 확인, 로그에 이미지/파일명 미노출 확인.
+- **장소 특징 VLM 사전 분석 파이프라인** (ADR-0003 참고):
+  - Tour API `cpyrhtDivCd`(→ 백엔드 `copyrightCode`)는 `Type1`(출처표시만, 변경 허용)/
+    `Type3`(변경금지) 두 값뿐이라는 것을 공식 매뉴얼로 확인. `docs/AI_API_CONTRACT.md`에
+    "배경은 Type1만 forwarding" 제약을 반영.
+  - `scripts/analyze_top_places.py`(신규): 백엔드 API에서 Type1 이미지가 가장 많은
+    상위 10개 장소를 골라, 장소당 최대 5장을 Hugging Face 무료 Inference API(비전 지원
+    채팅 모델)로 분석해 `assets/places/place_insights.json`에 저장하는 오프라인 배치.
+    이 개발 환경(RAM 7.5GB, GPU 없음)에서는 로컬 VLM 실행이 사실상 불가능해 원격 호스팅만
+    쓴다.
+  - `app/places/insights.py`(신규): 런타임 로더. `resolve_place_context()` 우선순위에
+    한 단계 추가(개발 카탈로그 → **insights 매칭** → 백엔드 제공 필드 → 범용 문구).
+  - `HF_TOKEN`이 없어 배치를 아직 실행하지 못했다 — 커밋된 `place_insights.json`은
+    빈 카탈로그다. 서비스는 이 상태에서도 기존 방식대로 정상 동작한다.
 
 ## 아직 안 된 것 / 알려진 제약
 
 - **Gemini 실제 호출 미검증.** `providers/gemini.py`는 `google-genai` 2.17.0의 실제
   타입을 인터프리터로 직접 확인하고 작성했지만, 실제 이미지 생성 응답 구조는 키 발급
   후 스모크 테스트가 필요하다.
-- **배경 이미지 라이선스 확정 전.** 로컬 카탈로그는 개발용일 뿐이고, 운영에서 실제로
-  쓰일 배경은 백엔드가 Tour API 이미지를 forwarding하는 경로다. 그 Tour API 이미지가
-  AI 합성 배경으로 실제 사용 가능한지(한국관광공사 이용 약관상 출처 표기 조건 등)는
-  법무/정책 확인이 필요하며, 이 리포의 범위 밖이다 — 백엔드/기획 팀 확인 필요.
+- **배경 이미지 라이선스 확정 전.** `copyrightCode == "Type1"`(변경 허용) 여부는 코드로
+  구분할 수 있게 됐지만(ADR-0003), 실제로 그 판단이 한국관광공사 이용 약관과 정확히
+  일치하는지, 출처 표기를 어떻게(어디에) 할지는 법무/정책 확인이 필요하며 이 리포의
+  범위 밖이다 — 백엔드/기획 팀 확인 필요.
+- **`scripts/analyze_top_places.py` 배치를 아직 실행하지 못했다.** `HF_TOKEN`이 없어
+  `place_insights.json`이 빈 카탈로그로 커밋돼 있다. 토큰 발급 후 1회 실행하면 상위
+  10개 장소 리포트가 채워진다.
 - **YuNet 모델 파일 미포함.** 기본은 OpenCV 번들 Haar cascade로 동작(정확도 낮음).
   운영 배포 전 YuNet ONNX 모델을 받아 `FACE_MODEL_PATH`로 주입하는 것을 권장.
 - **메트릭/관측성 없음.** 검토 총평 §2-5(제품 분석 이벤트)에 해당하는 부분은 이
@@ -74,11 +98,17 @@ Gemini provider는 실제 API 호출 코드까지 작성됐지만 **실제 키�
   아니다.
 - 가능하면 `placeName`/`placeRegion`/`placeDescription`도 함께 보내 달라 — 프롬프트
   품질에 직접 영향을 준다.
+- **배경 이미지는 반드시 `copyrightCode == "Type1"`인 것만 forwarding해야 한다**
+  (`Type3`은 변경금지라 AI 합성에 쓸 수 없다). `GET /api/v1/places/{id}`의
+  `images[].copyrightCode`로 이미 판단 가능하다.
 
 ## 다음 작업 후보
 
 1. `GOOGLE_API_KEY` 발급 후 Gemini 스모크 테스트 (1:1/4:5/9:16 각각, 소요시간 기록)
 2. 백엔드 `HttpAiGenerationClient` 구현 후 실제 `Place` 데이터로 통합 테스트
-3. Tour API 이미지의 AI 합성 배경 사용 가능 여부 법무/정책 확인
+3. Tour API 이미지의 AI 합성 배경 사용 가능 여부 법무/정책 확인 (Type1 판단이
+   실제 이용 약관과 일치하는지, 출처 표기 방식)
 4. `docker compose up`으로 Redis 포함 전체 스택 기동 검증
 5. YuNet 모델 파일 주입 여부 결정
+6. `HF_TOKEN` 발급 후 `scripts/analyze_top_places.py` 실행해 `place_insights.json`
+   실제 채우기, 결과 리포트 품질 수동 검수

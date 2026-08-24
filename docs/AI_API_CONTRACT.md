@@ -33,6 +33,13 @@ record AiGenerationResponse(String providerJobId, String status, String imageRef
    `onePickPlaceId`로 `Place`를 조회해 그 URL에서 이미지 바이트를 가져온 뒤 `POST
    /v1/generations`의 `background` 필드로 함께 보내야 한다. 이 단계 없이는 `AI_PROVIDER=gemini`
    같은 실 프로바이더 요청이 전부 `BACKGROUND_REQUIRED`로 실패한다 (아래 참고).
+   **반드시 `copyrightCode == "Type1"`인 이미지만 보내야 한다** — Tour API 저작권 유형
+   코드(`cpyrhtDivCd`)는 `Type1`(제1유형, 출처표시만 하면 됨, 변경 허용)과
+   `Type3`(제1유형 + 변경금지) 두 가지뿐이고, AI 합성은 원본을 변형하는 행위라 `Type3`
+   이미지는 법적으로 배경에 쓸 수 없다. `GET /api/v1/places/{id}`의 `images[].copyrightCode`로
+   이미 노출되고 있으니 백엔드가 forwarding 전에 걸러야 한다 (`docs/adr/
+   0003-place-image-vlm-analysis.md`). `Type1`이어도 "출처표시-권장"이므로 최종 결과물
+   주변에 한국관광공사 출처 표기가 필요하다 — 이건 프론트/백엔드 UI 몫이다.
 
 > **`onePickPlaceId`는 백엔드 `Place.id`(UUID)다.** `CompositionJob.onePickPlaceId`가
 > `Place`를 가리키는 FK이기 때문이다 (`07_DATA_MODEL.md`: `Place 1 ─ N CompositionJob`).
@@ -86,7 +93,7 @@ Base path: `/v1` (헬스체크만 예외로 루트의 `/health`)
 | `photo` | 예 | 사용자 사진 파일 (JPG/PNG/WEBP, 최대 10MB) |
 | `onePickPlaceId` | 예 | 백엔드 `Place.id` (UUID) |
 | `aspectRatio` | 아니오 (기본 `4:5`) | `1:1` \| `4:5` \| `9:16` |
-| `background` | **사실상 필수** | 배경 이미지 파일. 백엔드가 `Place.thumbnailUrl`/`PlaceImage.imageUrl`(한국관광공사 이미지 URL)에서 가져와 전달한다. `AI_PROVIDER=mock`일 때만 생략 가능(플레이스홀더로 대체) — `gemini` 등 실 프로바이더에서 생략하면 `400 BACKGROUND_REQUIRED` |
+| `background` | **사실상 필수** | 배경 이미지 파일. 백엔드가 `Place.thumbnailUrl`/`PlaceImage.imageUrl`(한국관광공사 이미지 URL) 중 **`copyrightCode == "Type1"`인 것만** 가져와 전달한다. `AI_PROVIDER=mock`일 때만 생략 가능(플레이스홀더로 대체) — `gemini` 등 실 프로바이더에서 생략하면 `400 BACKGROUND_REQUIRED` |
 | `placeName` | 아니오 | `Place.name`. 프롬프트에 장소명으로 주입된다 |
 | `placeRegion` | 아니오 | `Place.region`. 없으면 장면 묘사에 활용 |
 | `placeDescription` | 아니오 | `Place.description`. 있으면 장면 묘사로 그대로 쓰인다 — 보낼 수 있으면 보내는 것을 권장 |

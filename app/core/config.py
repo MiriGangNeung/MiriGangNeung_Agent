@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     def backgrounds_dir(self) -> Path:
         return REPO_ROOT / "assets" / "backgrounds"
 
+    @property
+    def places_dir(self) -> Path:
+        return REPO_ROOT / "assets" / "places"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,0 +1,11 @@
+{
+  "_comment": [
+    "scripts/analyze_top_places.py의 산출물. 아직 실제 배치를 돌리지 않아 비어 있다.",
+    "HF_TOKEN 발급 후 `python scripts/analyze_top_places.py --backend-base-url <백엔드 URL>`로 채운다.",
+    "런타임(app/places/insights.py)은 이 파일이 비어 있어도 정상 동작한다 — resolve_place_context()가 다음 우선순위(백엔드 제공 필드)로 넘어간다."
+  ],
+  "generatedAt": null,
+  "model": null,
+  "topN": 10,
+  "places": []
+}
