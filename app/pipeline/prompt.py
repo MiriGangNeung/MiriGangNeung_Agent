@@ -19,6 +19,7 @@ PROMPT_VERSION = "v3"
 COMPOSITION_TEMPLATE = "composition_v3.md"
 QUALITY_CHECK_TEMPLATE = "quality_check_v1.md"
 STYLE_ANALYSIS_TEMPLATE = "style_analysis_v1.md"
+BACKGROUND_ANALYSIS_TEMPLATE = "background_analysis_v1.md"
 
 _FRONT_MATTER = re.compile(r"^---\n.*?\n---\n", re.DOTALL)
 
@@ -49,6 +50,10 @@ def build_composition_prompt(
 
 def build_style_analysis_prompt() -> str:
     return load_template(STYLE_ANALYSIS_TEMPLATE)
+
+
+def build_background_analysis_prompt() -> str:
+    return load_template(BACKGROUND_ANALYSIS_TEMPLATE)
 
 
 def build_quality_check_prompt() -> str:

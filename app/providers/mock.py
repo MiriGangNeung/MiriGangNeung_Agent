@@ -12,6 +12,7 @@ import io
 from PIL import Image
 
 from app.providers.base import (
+    BackgroundAnalysis,
     CompositionOutput,
     CompositionRequest,
     ImageCompositionProvider,
@@ -60,6 +61,12 @@ class MockProvider(ImageCompositionProvider):
             StyleTag(category="mood", value="감성적", confidence=0.5),
             StyleTag(category="outfit", value="캐주얼", confidence=0.5),
         ]
+
+    async def analyze_background(self, image: bytes, mime: str) -> BackgroundAnalysis:
+        return BackgroundAnalysis(
+            scene_description="자연광이 드는 야외 관광지 풍경",
+            lighting="맑은 날 낮, 부드러운 광량",
+        )
 
     async def check_quality(self, image: bytes, mime: str) -> QualityVerdict:
         return QualityVerdict(passed=True, details={"provider": "mock"})

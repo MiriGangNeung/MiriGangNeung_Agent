@@ -23,8 +23,13 @@ from google import genai
 from google.genai import types
 
 from app.core.config import Settings
-from app.pipeline.prompt import build_quality_check_prompt, build_style_analysis_prompt
+from app.pipeline.prompt import (
+    build_background_analysis_prompt,
+    build_quality_check_prompt,
+    build_style_analysis_prompt,
+)
 from app.providers.base import (
+    BackgroundAnalysis,
     CompositionOutput,
     CompositionRequest,
     ImageCompositionProvider,
@@ -126,6 +131,16 @@ class GeminiProvider(ImageCompositionProvider):
             except (KeyError, TypeError, ValueError):
                 continue
         return tags
+
+    # ── 배경 이미지 실시간 분석 (docs/adr/0004-realtime-background-analysis.md) ──
+    async def analyze_background(self, image: bytes, mime: str) -> BackgroundAnalysis:
+        payload = await self._ask_json(image, mime, build_background_analysis_prompt())
+        return BackgroundAnalysis(
+            scene_description=str(payload.get("scene_description", "")),
+            lighting=str(payload.get("lighting", "")),
+            notable_features=tuple(str(v) for v in payload.get("notable_features", []) if v),
+            mood_tags=tuple(str(v) for v in payload.get("mood_tags", []) if v),
+        )
 
     # ── 품질·안전성 검사 (E5) ───────────────────────────────
     async def check_quality(self, image: bytes, mime: str) -> QualityVerdict:

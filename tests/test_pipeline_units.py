@@ -20,6 +20,7 @@ from app.places.backgrounds import (
     resolve_place_context,
 )
 from app.providers.base import (
+    BackgroundAnalysis,
     CompositionOutput,
     CompositionRequest,
     ImageCompositionProvider,
@@ -91,6 +92,9 @@ class _StubProvider(ImageCompositionProvider):
     async def analyze_style(self, image, mime):  # pragma: no cover
         return []
 
+    async def analyze_background(self, image, mime):  # pragma: no cover
+        return BackgroundAnalysis()
+
     async def check_quality(self, image, mime):
         if self._error:
             raise self._error
@@ -147,6 +151,9 @@ class _FlakyProvider(ImageCompositionProvider):
 
     async def analyze_style(self, image, mime):  # pragma: no cover
         return []
+
+    async def analyze_background(self, image, mime):  # pragma: no cover
+        return BackgroundAnalysis()
 
     async def check_quality(self, image, mime):  # pragma: no cover
         return QualityVerdict(True)

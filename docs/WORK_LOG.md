@@ -1,5 +1,70 @@
 # Work Log
 
+## 2026-08-24 (2) — 실시간 배경 이미지 분석 폴백 (claude)
+
+- 시작: 시간 미기록
+- 완료: 2026-08-24 KST
+- 작업 agent: claude (Sonnet 5)
+
+### 작업 내용
+
+사용자 요청으로 백엔드(`MiriGangNeung_BackEnd`) 원격 저장소를 `gh repo clone`으로
+다시 조사해 "현재 사진 호출 체계와 알고리즘"을 확인하고, 그 결과를 Agentic AI의
+프롬프트 생성 단계(이미지 분석 리포트 생성)에 반영했다.
+
+조사 결과 아래 3번째 항목 "장소 특징 VLM 사전 분석 파이프라인"(같은 날짜, ADR-0003)
+이 세운 전제 하나가 실제와 다르다는 것을 발견했다.
+
+- 백엔드에는 배경 후보를 제공하는 경로가 셋이다: (1) `GET /api/v1/places/{id}` →
+  `images[]`(ADR-0003이 분석 대상으로 삼은 경로, `Place.id` UUID에 종속), (2)
+  `GET /api/v1/award-photos`(공모전 수상작, `AwardPhotoService`), (3)
+  `GET /api/v1/tourism-photos`(관광사진갤러리, `TourismPhotoService`, **DTO에
+  `copyrightCode` 필드 자체가 없음**).
+- 백엔드 설계 문서(`docs/superpowers/specs/2026-08-10-tour-photo-source-tabs-design.md`)
+  에 따르면 사용자가 실제로 배경을 고르는 화면은 (1)이 아니라 (2)/(3) 두 탭이고,
+  기본 탭은 `award`다. 같은 문서가 명시: 두 소스의 사진 ID는 "표시용 식별자"일
+  뿐 `Place.id`가 아니다.
+- 즉 사용자가 실제로 고르는 배경 상당수는 `onePickPlaceId`가 `Place` UUID가
+  아니어서, ADR-0003의 `place_insights.json`(Place UUID 키 오프라인 캐시)에
+  애초에 매칭될 수 없다.
+
+이를 보완하기 위해 ADR-0004를 작성하고, "오프라인 캐시가 미스일 때만 이번 요청의
+실제 배경 이미지 바이트를 실시간 분석해 프롬프트 힌트로 쓰는" 폴백 단계를
+추가했다. 배경 바이트는 소스가 무엇이든 매 요청 `background` 필드로 이미
+전달되므로, ID 매칭에 의존하지 않는 이 방법이 세 소스 모두에 동작한다.
+
+- `app/providers/base.py`: `BackgroundAnalysis` dataclass, `analyze_background()`
+  추상 메서드 추가 (모든 `ImageCompositionProvider` 구현체·테스트 더블에 반영).
+- `prompts/background_analysis_v1.md`(신규): `scripts/analyze_top_places.py`의
+  오프라인 분석과 필드명을 맞춘 JSON 응답 스키마.
+- `app/providers/gemini.py::analyze_background()`: 기존 `_ask_json()`(스타일분석·
+  품질검사가 쓰는 JSON-fence 파싱 경로) 재사용 — 새 비용 등급 없음.
+- `app/providers/mock.py::analyze_background()`: 고정값 스텁.
+- `app/places/backgrounds.py`: `has_precomputed_place_context()`(신규, 1·2순위
+  캐시 히트 여부만 확인) + `resolve_place_context()`에 3순위(`background_analysis`)
+  추가. 우선순위: 개발 카탈로그 → `place_insights.json` → **실시간 분석(신규)** →
+  백엔드 텍스트 필드 → 범용 문구.
+- `app/jobs/runner.py::_execute()`: `has_precomputed_place_context()`로 캐시
+  미스를 확인한 뒤에만 `provider.analyze_background()`를 호출, 실패는 로그만
+  남기고 다음 우선순위로 폴백 (Job 전체를 실패시키지 않음).
+- `docs/adr/0004-realtime-background-analysis.md`(신규): 위 조사 결과와 설계
+  결정, ADR-0003의 "요청마다 VLM 호출 기각" 대안과의 관계(뒤집는 게 아니라
+  캐시 미스 폴백으로 보완) 기록.
+- `docs/AI_API_CONTRACT.md`: `onePickPlaceId` 관련 각주에 백엔드 팀이 아직
+  해소하지 않은 계약 공백 두 가지(award/gallery 탭의 비-UUID ID,
+  tourism-photos의 `copyrightCode` 부재) 명시.
+- 테스트: `tests/test_place_insights.py`에 `resolve_place_context()` 3순위
+  단위 테스트 2건(라이브 분석 사용/빈 분석 무시) + `has_precomputed_place_context()`
+  테스트 1건 추가. `tests/test_pipeline_units.py`의 `_StubProvider`/
+  `_FlakyProvider`에 `analyze_background` 스텁 추가(추상 메서드 추가로 인한
+  컴파일 대응).
+  - `GeminiProvider`/`MockProvider`를 직접 mock하는 단위 테스트는 추가하지
+    않았다 — 기존에도 이 두 클래스는 그런 방식으로 단위 테스트되지 않고
+    (Gemini는 실제 키로 수동 스모크 테스트, Mock은 E2E로만 간접 검증) 있어,
+    기존 테스트 전략과 다른 새 패턴을 끌어들이지 않는 쪽을 택했다.
+- 검증: `.venv/bin/python -m pytest -q` 115 passed(기존 112 + 신규 3),
+  `ruff check .`/`ruff format --check .` 클린.
+
 ## 2026-08-24 — 장소 특징 VLM 사전 분석 파이프라인 (claude)
 
 - 시작: 시간 미기록

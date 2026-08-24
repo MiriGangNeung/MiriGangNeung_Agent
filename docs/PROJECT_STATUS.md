@@ -31,6 +31,16 @@ VLM으로 오프라인 사전 분석해 장면·조명·분위기 리포트를 �
 (ADR-0003). 이 리포트는 `resolve_place_context()`가 백엔드의 짧은 `placeDescription`보다
 우선해서 쓴다.
 
+백엔드 저장소를 다시 조사해 ADR-0003의 전제 하나가 실제와 다르다는 것을 확인했다 —
+사용자가 실제로 배경을 고르는 "1번 배경 선택 화면"은 `Place.images[]`가 아니라
+`GET /api/v1/award-photos`/`GET /api/v1/tourism-photos`(공모전 수상작/관광사진갤러리
+탭)일 가능성이 높고, 이 두 소스의 사진 ID는 `Place.id` UUID가 아니다. 즉
+`place_insights.json`(Place UUID 키)이 실제 요청 다수에 매칭되지 않을 수 있다. 이를
+보완하기 위해, 오프라인 캐시가 미스일 때만 이번 요청의 실제 배경 이미지를 실시간
+분석(Gemini vision, 기존 스타일분석과 같은 모델)해 프롬프트에 반영하는 폴백 단계를
+추가했다(ADR-0004). `tourism-photos` 응답에는 `copyrightCode` 필드가 아예 없다는 것도
+확인해 `docs/AI_API_CONTRACT.md`에 각주로 남겼다.
+
 ## 완료된 것
 
 - FastAPI 앱 골격, 라이프사이클(정리 루프 포함), 헬스체크/메타 엔드포인트
@@ -43,7 +53,7 @@ VLM으로 오프라인 사전 분석해 장면·조명·분위기 리포트를 �
 - 비용·남용 제어: 멱등키 기반 중복 요청 캐시, 일별 예산 상한, 세션별 rate limit
 - 오류 코드 20종(`BACKGROUND_REQUIRED` 포함) + retryable 플래그, 백엔드 재시도 규칙과 정렬
 - 개인정보: EXIF/GPS 제거, 원본+배경 즉시 삭제, 결과 TTL 정리, 로그 민감정보 필터
-- 백엔드 계약 문서(`docs/AI_API_CONTRACT.md`), ADR-0001, ADR-0002, ADR-0003
+- 백엔드 계약 문서(`docs/AI_API_CONTRACT.md`), ADR-0001, ADR-0002, ADR-0003, ADR-0004
 - **배경 이미지 소싱 구조 재점검 및 수정** (ADR-0002 참고):
   - `onePickPlaceId` = 백엔드 `Place.id`(UUID)임을 계약에 명시. 이전에는 로컬 카탈로그가
     `anmok-beach` 같은 임의 슬러그를 써서 운영 요청과 절대 매칭되지 않는 상태였다.
@@ -147,6 +157,22 @@ VLM으로 오프라인 사전 분석해 장면·조명·분위기 리포트를 �
     한 단계 추가(개발 카탈로그 → **insights 매칭** → 백엔드 제공 필드 → 범용 문구).
   - `HF_TOKEN`이 없어 배치를 아직 실행하지 못했다 — 커밋된 `place_insights.json`은
     빈 카탈로그다. 서비스는 이 상태에서도 기존 방식대로 정상 동작한다.
+- **실시간 배경 이미지 분석 폴백** (2026-08-24, ADR-0004 참고):
+  - `MiriGangNeung_BackEnd` 저장소를 다시 조사해, 배경 후보가 `Place.images[]` 외에
+    `GET /api/v1/award-photos`(공모전 수상작)·`GET /api/v1/tourism-photos`(관광사진갤러리)
+    두 소스가 더 있고, 실제 배경 선택 화면은 이 둘을 기본으로 쓴다는 것을 확인. 두 소스의
+    사진 ID(`kto-award:<id>`/`kto-gallery:<id>`)는 `Place.id` UUID가 아니라서
+    `place_insights.json`(ADR-0003)에 매칭될 수 없다.
+  - `app/providers/base.py`에 `BackgroundAnalysis`/`analyze_background()` 추가.
+    `GeminiProvider`는 기존 스타일분석·품질검사와 같은 vision 모델·JSON 파싱 경로를
+    재사용(`prompts/background_analysis_v1.md` 신규).
+  - `app/places/backgrounds.py::has_precomputed_place_context()` 신규,
+    `resolve_place_context()` 우선순위에 3순위(라이브 분석) 추가 — 오프라인 캐시가 미스일
+    때만 `app/jobs/runner.py`가 조건부로 `analyze_background()`를 호출해, 캐시가 히트하는
+    경우엔 추가 비용·지연이 없다.
+  - `GET /api/v1/tourism-photos`(`TourismPhotoResponse`)에는 `copyrightCode` 필드가 없어
+    백엔드도 이 소스의 Type1 여부를 판단할 근거가 없다는 것도 확인 — `docs/AI_API_CONTRACT.md`
+    에 백엔드 팀 대상 각주로 남김.
 
 ## 아직 안 된 것 / 알려진 제약
 
@@ -211,3 +237,8 @@ VLM으로 오프라인 사전 분석해 장면·조명·분위기 리포트를 �
    복잡하게 나오는 포즈 예시를 빼는 등 지시를 보수적으로 조정 검토.
 7. `HF_TOKEN` 발급 후 `scripts/analyze_top_places.py` 실행해 `place_insights.json`
    실제 채우기, 결과 리포트 품질 수동 검수
+8. 백엔드 팀과 함께 `onePickPlaceId` 계약 공백 해소 — award-photos/tourism-photos
+   탭에서 고른 배경일 때 `onePickPlaceId`로 무엇을 보낼지 결정, `tourism-photos`
+   응답에 `copyrightCode` 추가 (`docs/AI_API_CONTRACT.md` 각주, ADR-0004 참고)
+9. 실제 `GOOGLE_API_KEY`로 `place_insights.json`에 없는 장소를 대상으로
+   `analyze_background()` 실시간 분석 폴백을 1건 수동 검증 (ADR-0004)

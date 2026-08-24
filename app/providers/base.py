@@ -41,6 +41,24 @@ class QualityVerdict:
     details: dict[str, object] = field(default_factory=dict)
 
 
+@dataclass
+class BackgroundAnalysis:
+    """이번 요청의 배경 이미지를 실시간으로 분석한 결과.
+
+    `scripts/analyze_top_places.py`의 오프라인 `ImageAnalysis`와 필드명을 맞춰
+    두 경로가 같은 모양의 데이터를 만들도록 한다 (`docs/adr/
+    0004-realtime-background-analysis.md`). 오프라인 캐시(`place_insights.json`)가
+    `onePickPlaceId`로 매칭되지 않을 때만 이 분석이 쓰인다 — 백엔드의
+    award-photos/tourism-photos 탭에서 고른 배경은 Place UUID가 아닌 ID를 갖고
+    있어 캐시에 애초에 매칭될 수 없기 때문이다.
+    """
+
+    scene_description: str = ""
+    lighting: str = ""
+    notable_features: tuple[str, ...] = field(default_factory=tuple)
+    mood_tags: tuple[str, ...] = field(default_factory=tuple)
+
+
 class ImageCompositionProvider(abc.ABC):
     name: str
     image_model: str
@@ -63,6 +81,14 @@ class ImageCompositionProvider(abc.ABC):
     @abc.abstractmethod
     async def analyze_style(self, image: bytes, mime: str) -> list[StyleTag]:
         """의상·색상·무드·포즈 태그를 신뢰도와 함께 추출한다 (요구사항 B6)."""
+
+    @abc.abstractmethod
+    async def analyze_background(self, image: bytes, mime: str) -> BackgroundAnalysis:
+        """이번 요청의 배경 이미지에서 장면·조명·분위기를 추출한다.
+
+        오프라인 VLM 사전분석 캐시(`place_insights.json`)가 `onePickPlaceId`로
+        매칭되지 않을 때만 폴백으로 호출된다 (`app/jobs/runner.py`).
+        """
 
     @abc.abstractmethod
     async def check_quality(self, image: bytes, mime: str) -> QualityVerdict:

@@ -22,8 +22,12 @@ from app.pipeline import safety, style
 from app.pipeline.compose import compose_with_retry
 from app.pipeline.finalize import finalize_image
 from app.pipeline.prompt import build_composition_prompt
-from app.places.backgrounds import resolve_place_context
-from app.providers.base import CompositionRequest, ImageCompositionProvider
+from app.places.backgrounds import has_precomputed_place_context, resolve_place_context
+from app.providers.base import (
+    BackgroundAnalysis,
+    CompositionRequest,
+    ImageCompositionProvider,
+)
 from app.schemas.generation import JobStatus, SafetyStatus
 from app.storage.temp_store import TempImageStore
 
@@ -108,11 +112,27 @@ class GenerationRunner:
         background_image = self.images.read_input(record.background_key)
         background_mime = "image/png"
 
+        background_analysis: BackgroundAnalysis | None = None
+        if not has_precomputed_place_context(record.one_pick_place_id):
+            # 오프라인 캐시(개발용 카탈로그, place_insights.json)가 모두 미스인 경우만
+            # 이번 요청의 실제 배경 이미지를 분석한다 — 백엔드의 award-photos/
+            # tourism-photos 탭에서 고른 배경은 Place UUID가 아닌 ID를 가져 애초에
+            # 캐시에 매칭될 수 없다 (docs/adr/0004-realtime-background-analysis.md).
+            # 실패해도 Job 전체를 실패시키지 않고 다음 우선순위(백엔드 텍스트 필드 →
+            # 범용 문구)로 조용히 넘어간다.
+            try:
+                background_analysis = await self.provider.analyze_background(
+                    background_image, background_mime
+                )
+            except Exception:  # noqa: BLE001 - 분석 실패는 폴백으로 흡수한다
+                logger.warning("배경 이미지 실시간 분석에 실패했습니다.", exc_info=True)
+
         place = resolve_place_context(
             record.one_pick_place_id,
             place_name=record.place_name,
             place_region=record.place_region,
             place_description=record.place_description,
+            background_analysis=background_analysis,
         )
         prompt = build_composition_prompt(
             place, record.aspect_ratio, record.style_tags, record.variation_mode

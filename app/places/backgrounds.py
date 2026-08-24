@@ -30,6 +30,7 @@ from PIL import Image
 
 from app.core.config import get_settings
 from app.places.insights import get_place_insight
+from app.providers.base import BackgroundAnalysis
 
 logger = logging.getLogger(__name__)
 
@@ -118,12 +119,27 @@ def placeholder_background(width: int = 1024, height: int = 1280) -> bytes:
     return buffer.getvalue()
 
 
+def has_precomputed_place_context(one_pick_place_id: str) -> bool:
+    """1·2순위(개발용 카탈로그, 오프라인 VLM 캐시)가 이미 매칭되는지만 가볍게 확인한다.
+
+    `app/jobs/runner.py`가 이 함수로 캐시 히트 여부를 먼저 확인해, 미스일 때만
+    (대부분의 실제 요청 — award-photos/tourism-photos에서 고른 배경은
+    `onePickPlaceId`가 `Place` UUID가 아니라 캐시에 애초에 매칭되지 않는다)
+    `provider.analyze_background()`를 호출해 비용을 아낀다.
+    """
+    dev_place = get_dev_place(one_pick_place_id)
+    if dev_place is not None and dev_place.usable:
+        return True
+    return get_place_insight(one_pick_place_id) is not None
+
+
 def resolve_place_context(
     one_pick_place_id: str,
     *,
     place_name: str | None,
     place_region: str | None,
     place_description: str | None,
+    background_analysis: BackgroundAnalysis | None = None,
 ) -> PlaceContext:
     """프롬프트에 넣을 장소명·장면·조명 힌트를 결정한다.
 
@@ -134,9 +150,15 @@ def resolve_place_context(
        있으면 그 장면/조명/분위기를 쓴다 — Type1(변경 허용) 라이선스 이미지가 많은
        상위 N개 장소만 대상이라 모든 요청에 매칭되지는 않는다 (`docs/adr/
        0003-place-image-vlm-analysis.md`).
-    3. 백엔드가 `placeName`/`placeRegion`/`placeDescription`을 보냈으면 그 값을
+    3. 1·2가 모두 미스면, 호출자가 이번 요청의 실제 배경 이미지를 실시간 분석해
+       넘긴 `background_analysis`를 쓴다 — 백엔드의 award-photos/tourism-photos
+       탭에서 고른 배경은 `Place` UUID가 아닌 ID를 가져 1·2에 매칭될 수 없으므로,
+       ID가 아니라 이번 요청의 이미지 바이트 자체를 근거로 삼는다 (`docs/adr/
+       0004-realtime-background-analysis.md`).
+    4. 백엔드가 `placeName`/`placeRegion`/`placeDescription`을 보냈으면 그 값을
        쓴다 — 백엔드 `Place` 테이블에 이미 있는 정보이므로 별도 조회 없이 활용한다.
-    4. 셋 다 없으면 범용 문구로 채운다.
+       (3이 시도됐지만 실패해 빈 분석만 돌아온 경우의 폴백이기도 하다.)
+    5. 넷 다 없으면 범용 문구로 채운다.
     """
     dev_place = get_dev_place(one_pick_place_id)
     if dev_place is not None and dev_place.usable:
@@ -146,6 +168,21 @@ def resolve_place_context(
     if insight is not None:
         name = place_name or insight.place_name
         return PlaceContext(name, insight.as_scene_hint(), insight.lighting_hint)
+
+    if background_analysis is not None and (
+        background_analysis.scene_description or background_analysis.lighting
+    ):
+        name = place_name or "강릉의 관광지"
+        parts = (
+            [background_analysis.scene_description] if background_analysis.scene_description else []
+        )
+        if background_analysis.notable_features:
+            parts.append("눈에 띄는 요소: " + ", ".join(background_analysis.notable_features))
+        if background_analysis.mood_tags:
+            parts.append("분위기: " + ", ".join(background_analysis.mood_tags))
+        scene = " ".join(parts) or (place_description or "강릉의 대표적인 관광 명소")
+        lighting = background_analysis.lighting or "배경 사진에 보이는 조명 조건을 그대로 따를 것"
+        return PlaceContext(name, scene, lighting)
 
     name = place_name or "강릉의 관광지"
     if place_description:

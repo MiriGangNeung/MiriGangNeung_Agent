@@ -46,6 +46,21 @@ record AiGenerationResponse(String providerJobId, String status, String imageRef
 > 임의의 사람이 읽을 수 있는 슬러그가 아니다 — 이 서비스의 로컬 개발용 배경 카탈로그
 > (`assets/backgrounds/backgrounds.json`)는 이 UUID와 절대 매칭되지 않으며, `AI_PROVIDER=mock`
 > 로컬 개발과 curl 수동 테스트에서만 쓰인다.
+>
+> **다만 백엔드 쪽에 아직 남은 계약상 공백 두 가지를 파악했다** (백엔드
+> `docs/superpowers/specs/2026-08-10-tour-photo-source-tabs-design.md` 조사,
+> `docs/adr/0004-realtime-background-analysis.md` 참고). 이 AI 서비스는
+> `onePickPlaceId`를 불투명한 문자열로만 다루고 `background` 바이트만 신뢰하므로
+> 아래 두 가지로 이 서비스가 당장 막히진 않지만, 백엔드 팀이 알아야 할 공백이다.
+> 1. 사용자가 "1번 배경 선택 화면"에서 `GET /api/v1/award-photos`/
+>    `GET /api/v1/tourism-photos`(공모전 수상작/관광사진갤러리 탭)로 고른 배경은
+>    응답 id가 `kto-award:<contentId>`/`kto-gallery:<galContentId>` 형태의 표시용
+>    식별자이지 `Place.id`가 아니다. 이 경우 백엔드가 `onePickPlaceId`로 무엇을
+>    보내야 하는지 계약에 아직 정의돼 있지 않다.
+> 2. `GET /api/v1/tourism-photos`(`TourismPhotoResponse`)에는 `copyrightCode`
+>    필드 자체가 없다 — 백엔드도 이 소스에 대해서는 Type1 여부를 판단할 근거가
+>    없다는 뜻이다. 위 5번의 "반드시 Type1만" 요구사항을 이 소스에서 지키려면
+>    백엔드가 별도로 `cpyrhtDivCd`를 응답에 추가해야 한다.
 
 ## 인증
 

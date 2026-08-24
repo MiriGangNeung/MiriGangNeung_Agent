@@ -16,12 +16,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.places.backgrounds import resolve_place_context  # noqa: E402
+from app.places.backgrounds import (  # noqa: E402
+    has_precomputed_place_context,
+    resolve_place_context,
+)
 from app.places.insights import (  # noqa: E402
     PlaceInsight,
     get_place_insight,
     load_place_insights,
 )
+from app.providers.base import BackgroundAnalysis  # noqa: E402
 from scripts.analyze_top_places import (  # noqa: E402
     ImageAnalysis,
     PlaceCandidate,
@@ -235,3 +239,62 @@ def test_resolve_place_context_falls_back_when_no_insight_matches(monkeypatch):
     )
 
     assert context.scene_hint == "백엔드가 보낸 짧은 설명"
+
+
+# ── resolve_place_context 3순위: 실시간 배경 분석 ─────────────────
+
+
+def test_resolve_place_context_uses_live_background_analysis_when_cache_misses(
+    monkeypatch,
+):
+    monkeypatch.setattr("app.places.backgrounds.get_dev_place", lambda place_id: None)
+    monkeypatch.setattr("app.places.backgrounds.get_place_insight", lambda place_id: None)
+
+    analysis = BackgroundAnalysis(
+        scene_description="해변가에 늘어선 소나무",
+        lighting="노을이 지는 저녁, 따뜻한 색감",
+        notable_features=("등대",),
+        mood_tags=("고요함",),
+    )
+    context = resolve_place_context(
+        "kto-award:12345",  # Place UUID가 아닌 공모전 수상작 ID
+        place_name=None,
+        place_region=None,
+        place_description="백엔드가 보낸 짧은 설명",
+        background_analysis=analysis,
+    )
+
+    assert "해변가에 늘어선 소나무" in context.scene_hint
+    assert "등대" in context.scene_hint
+    assert "고요함" in context.scene_hint
+    assert context.lighting_hint == "노을이 지는 저녁, 따뜻한 색감"
+    assert context.scene_hint != "백엔드가 보낸 짧은 설명"
+
+
+def test_resolve_place_context_ignores_empty_live_analysis(monkeypatch):
+    monkeypatch.setattr("app.places.backgrounds.get_dev_place", lambda place_id: None)
+    monkeypatch.setattr("app.places.backgrounds.get_place_insight", lambda place_id: None)
+
+    context = resolve_place_context(
+        "kto-gallery:98765",
+        place_name=None,
+        place_region=None,
+        place_description="백엔드가 보낸 짧은 설명",
+        background_analysis=BackgroundAnalysis(),  # 분석 실패/빈 응답
+    )
+
+    assert context.scene_hint == "백엔드가 보낸 짧은 설명"
+
+
+def test_has_precomputed_place_context(monkeypatch):
+    monkeypatch.setattr("app.places.backgrounds.get_dev_place", lambda place_id: None)
+    monkeypatch.setattr("app.places.backgrounds.get_place_insight", lambda place_id: None)
+    assert has_precomputed_place_context("kto-award:12345") is False
+
+    monkeypatch.setattr(
+        "app.places.backgrounds.get_place_insight",
+        lambda place_id: PlaceInsight(
+            place_id=place_id, place_name="x", scene_hint="s", lighting_hint="l"
+        ),
+    )
+    assert has_precomputed_place_context("9c1d4f2e-real-uuid") is True
