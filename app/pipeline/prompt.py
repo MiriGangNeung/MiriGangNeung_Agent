@@ -14,9 +14,9 @@ from app.core.config import get_settings
 from app.places.backgrounds import PlaceContext
 from app.schemas.generation import AspectRatio, StyleTag, VariationMode
 
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 
-COMPOSITION_TEMPLATE = "composition_v3.md"
+COMPOSITION_TEMPLATE = "composition_v4.md"
 QUALITY_CHECK_TEMPLATE = "quality_check_v1.md"
 STYLE_ANALYSIS_TEMPLATE = "style_analysis_v1.md"
 BACKGROUND_ANALYSIS_TEMPLATE = "background_analysis_v1.md"
@@ -38,10 +38,33 @@ def build_composition_prompt(
     variation_mode: VariationMode = VariationMode.SAME,
 ) -> str:
     template = load_template(COMPOSITION_TEMPLATE)
+    occluding = place.occluding_elements or "nothing"
+    # 조사 문서에 없는 장소는 이 두 칸이 비고, 프롬프트는 아래 일반 포즈 지시만 쓴다.
+    pose_direction = place.pose_direction or (
+        "이 장소에 대한 별도 촬영 지침은 없다. 아래 일반 지침을 따른다."
+    )
+    pose_negative = (
+        f"이 장소에서 특히 피할 것: {place.pose_negative}" if place.pose_negative else ""
+    )
     return (
-        template.replace("{place_name}", place.name)
+        template.replace("{suggested_framing}", _framing(place))
+        .replace("{place_pose_direction}", pose_direction)
+        .replace("{place_pose_negative}", pose_negative)
+        .replace("{place_name}", place.name)
         .replace("{scene_hint}", place.scene_hint)
         .replace("{lighting_hint}", place.lighting_hint)
+        .replace("{time_of_day}", place.time_of_day)
+        .replace("{light_direction}", place.light_direction)
+        .replace("{light_angle}", place.light_angle)
+        .replace("{color_temperature}", place.color_temperature)
+        .replace("{shadow_hardness}", place.shadow_hardness)
+        .replace("{camera_perspective}", place.camera_perspective)
+        .replace("{horizon_position}", place.horizon_position)
+        .replace("{ground_plane}", place.ground_plane)
+        .replace("{subject_zone}", place.subject_zone)
+        .replace("{occluding_elements}", occluding)
+        .replace("{mood_tags}", place.mood_tags)
+        .replace("{color_palette}", place.color_palette)
         .replace("{style_direction}", _style_direction(style_tags))
         .replace("{aspect_ratio}", aspect_ratio.value)
         .replace("{variation_direction}", _variation_direction(variation_mode))
@@ -58,6 +81,23 @@ def build_background_analysis_prompt() -> str:
 
 def build_quality_check_prompt() -> str:
     return load_template(QUALITY_CHECK_TEMPLATE)
+
+
+# 팀 조사 지침이 인물 크기·구도를 이미 지정했는지 판별하는 표현들.
+_FRAMING_TERMS = ("전신", "반신", "중경", "클로즈업", "퍼센트", "%")
+
+
+def _framing(place: PlaceContext) -> str:
+    """프레이밍 지시. 장소 지침이 이미 정했으면 VLM 판정을 쓰지 않는다.
+
+    조사 문서가 "전신 와이드로 화면 높이의 25~35퍼센트"라고 지정했는데 VLM이 같은
+    사진을 `half-body`로 판정한 사례가 있었다. 두 지시를 나란히 넣으면 모델이
+    충돌 속에서 임의로 하나를 고른다(실제로 반신이 나왔다). 사람이 장소를 보고
+    쓴 지침이 사진 한 장만 본 판정보다 신뢰도가 높으므로 그쪽을 따른다.
+    """
+    if any(term in place.pose_direction for term in _FRAMING_TERMS):
+        return "exactly as the place guidance above specifies"
+    return place.suggested_framing
 
 
 def _style_direction(style_tags: list[StyleTag]) -> str:

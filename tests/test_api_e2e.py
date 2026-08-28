@@ -68,7 +68,7 @@ def test_meta_reports_supported_aspect_ratios(client):
     payload = client.get("/v1/meta").json()
 
     assert payload["supportedAspectRatios"] == ["1:1", "4:5", "9:16"]
-    assert payload["promptVersion"] == "v3"
+    assert payload["promptVersion"] == "v4"
     assert payload["provider"] == "mock"
 
 
@@ -82,7 +82,7 @@ def test_full_generation_roundtrip(client):
     assert body["coarseStatus"] == "RUNNING"
     assert body["progress"] == 0
     assert body["metadata"]["onePickPlaceId"] == "anmok-beach"
-    assert body["metadata"]["promptVersion"] == "v3"
+    assert body["metadata"]["promptVersion"] == "v4"
     # 검토 총평 §2-7: 생성 완료 전, 요청 접수 시점에 이미 근사 비용이 채워져 있어야 한다.
     assert body["metadata"]["estimatedCostUsd"] == 0.0
 
@@ -343,3 +343,24 @@ def test_backend_supplied_place_fields_are_stored_on_the_job(client):
     assert record.place_name == "안목해변"
     assert record.place_region == "강원특별자치도 강릉시"
     assert record.place_description == "동해 바다와 백사장이 있는 해변"
+
+
+def test_choosing_a_different_photo_of_the_same_place_is_a_new_job(client):
+    """장소당 배경 후보가 여러 장이므로, 사진을 바꾸면 새로 합성해야 한다.
+
+    멱등키에 backgroundImageUrl이 빠져 있으면 같은 장소의 다른 사진을 골라도
+    이전 결과가 그대로 반환된다 (실제로 겪은 버그).
+    """
+    first = _submit(client, backgroundImageUrl="https://tong.example/1.jpg")
+    second = _submit(client, backgroundImageUrl="https://tong.example/2.jpg")
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert first.json()["providerJobId"] != second.json()["providerJobId"]
+
+
+def test_same_photo_and_same_background_is_deduped(client):
+    first = _submit(client, backgroundImageUrl="https://tong.example/same.jpg")
+    second = _submit(client, backgroundImageUrl="https://tong.example/same.jpg")
+
+    assert first.json()["providerJobId"] == second.json()["providerJobId"]

@@ -55,6 +55,10 @@ class JobRecord(BaseModel):
     place_name: str | None = None
     place_region: str | None = None
     place_description: str | None = None
+    # 프론트에서 사용자가 고른 배경 사진의 원본 URL(PlaceImage.imageUrl). place_id
+    # 하나에 사전 분석된 사진이 여러 장일 수 있어, 정확히 이 사진의 분석 데이터를
+    # 고르는 데 쓴다 (app/places/insights.py::get_image_insight).
+    background_image_url: str | None = None
 
     input_key: str | None = None
     # 제출 시점에 항상 해석되어 채워진다 (실 업로드 / 개발 카탈로그 / mock 플레이스홀더).

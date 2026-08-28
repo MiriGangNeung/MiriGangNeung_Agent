@@ -33,6 +33,8 @@ ALLOWED_MIME = frozenset({"image/jpeg", "image/png", "image/webp"})
 BLUR_VARIANCE_THRESHOLD = 45.0
 # 얼굴이 전체 이미지에서 차지하는 최소 비율. 너무 작으면 합성에 쓸 디테일이 없다.
 MIN_FACE_AREA_RATIO = 0.004
+# 눈 검출 ROI를 최소 이 높이까지 확대한 뒤 판정한다 (`_is_face_occluded` 참고).
+EYE_ROI_MIN_HEIGHT = 120
 
 
 @dataclass
@@ -163,11 +165,20 @@ def _face_sharpness(matrix: np.ndarray, face: FaceBox) -> float:
 
 
 def _is_face_occluded(matrix: np.ndarray, face: FaceBox) -> bool:
-    """얼굴 상단 절반에서 눈이 하나도 검출되지 않으면 가려진 것으로 본다."""
+    """얼굴 상단 절반에서 눈이 하나도 검출되지 않으면 가려진 것으로 본다.
+
+    Haar 눈 캐스케이드는 눈이 대략 20px 이상일 때부터 안정적으로 검출된다. 전신샷
+    처럼 얼굴이 작게 찍힌 사진은 이 ROI가 수십 px에 불과해, 얼굴이 멀쩡히 보여도
+    눈을 하나도 못 찾아 전부 '가려짐'으로 오판했다. 그래서 검출 전에 ROI를 최소
+    높이까지 확대한다 — 원본이 이미 충분히 크면 그대로 쓴다.
+    """
     roi = matrix[face.y : face.y + face.h // 2, face.x : face.x + face.w]
     if roi.size == 0:
         return True
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    if gray.shape[0] < EYE_ROI_MIN_HEIGHT:
+        scale = EYE_ROI_MIN_HEIGHT / gray.shape[0]
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
     eyes = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4)
     return len(eyes) == 0

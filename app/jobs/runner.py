@@ -113,7 +113,7 @@ class GenerationRunner:
         background_mime = "image/png"
 
         background_analysis: BackgroundAnalysis | None = None
-        if not has_precomputed_place_context(record.one_pick_place_id):
+        if not has_precomputed_place_context(record.one_pick_place_id, record.background_image_url):
             # 오프라인 캐시(개발용 카탈로그, place_insights.json)가 모두 미스인 경우만
             # 이번 요청의 실제 배경 이미지를 분석한다 — 백엔드의 award-photos/
             # tourism-photos 탭에서 고른 배경은 Place UUID가 아닌 ID를 가져 애초에
@@ -133,6 +133,7 @@ class GenerationRunner:
             place_region=record.place_region,
             place_description=record.place_description,
             background_analysis=background_analysis,
+            background_image_url=record.background_image_url,
         )
         prompt = build_composition_prompt(
             place, record.aspect_ratio, record.style_tags, record.variation_mode

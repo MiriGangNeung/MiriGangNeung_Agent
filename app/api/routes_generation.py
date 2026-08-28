@@ -64,6 +64,15 @@ async def create_generation(
     placeDescription: str | None = Form(
         default=None, description="Place.description (프롬프트 힌트)"
     ),
+    backgroundImageUrl: str | None = Form(
+        default=None,
+        description=(
+            "사용자가 프론트에서 고른 배경 사진의 원본 URL(PlaceImage.imageUrl). "
+            "place_insights.json에서 그 사진 정확히 하나의 사전 분석(카메라/인물 "
+            "배치 등)을 찾는 데 쓴다. 없으면 해당 장소의 대표 이미지 분석으로 "
+            "폴백한다."
+        ),
+    ),
     idempotencyKey: str | None = Form(default=None),
     sessionId: str | None = Form(default=None),
     runtime: Runtime = Depends(get_runtime),
@@ -79,7 +88,7 @@ async def create_generation(
     # variationMode도 키에 포함해, 백엔드가 idempotencyKey를 따로 관리하지 않아도
     # '구도/분위기 조정' 재생성(E4)이 자동으로 새 Job이 되도록 한다.
     dedupe_key = idempotencyKey or _auto_idempotency_key(
-        data, onePickPlaceId, aspectRatio, variationMode
+        data, onePickPlaceId, aspectRatio, variationMode, backgroundImageUrl
     )
     existing_id = runtime.store.find_by_idempotency_key(dedupe_key)
     if existing_id:
@@ -122,6 +131,7 @@ async def create_generation(
         place_name=placeName,
         place_region=placeRegion,
         place_description=placeDescription,
+        background_image_url=backgroundImageUrl,
         input_key=runtime.images.save_input(clean_bytes, ".png"),
         background_key=runtime.images.save_input(background_bytes, ".png"),
         idempotency_key=dedupe_key,
@@ -194,14 +204,19 @@ def _auto_idempotency_key(
     one_pick_place_id: str,
     aspect_ratio: AspectRatio,
     variation_mode: VariationMode,
+    background_image_url: str | None = None,
 ) -> str:
-    """입력 사진 + 장소 + 비율 + 변형모드가 같으면 같은 요청으로 본다.
+    """입력 사진 + 장소 + 배경 + 비율 + 변형모드가 같으면 같은 요청으로 본다.
 
     사용자가 '다시 생성하기(변형 없음)'를 연타해도 동일 조건이면 새로 생성하지 않는다.
     variationMode를 new_pose/new_mood로 바꿔 보내면 자동으로 새 Job이 된다(E4).
+
+    한 장소에 배경 후보가 여러 장이므로 `backgroundImageUrl`도 키에 넣는다 — 빼면
+    같은 장소에서 다른 사진을 골라도 이전 결과가 그대로 반환된다.
     """
     digest = hashlib.sha256(data).hexdigest()
-    return f"{digest}:{one_pick_place_id}:{aspect_ratio.value}:{variation_mode.value}"
+    background = background_image_url or ""
+    return f"{digest}:{one_pick_place_id}:{background}:{aspect_ratio.value}:{variation_mode.value}"
 
 
 async def _resolve_background(
