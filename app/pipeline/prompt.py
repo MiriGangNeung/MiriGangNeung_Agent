@@ -14,10 +14,14 @@ from app.core.config import get_settings
 from app.places.backgrounds import PlaceContext
 from app.schemas.generation import AspectRatio, StyleTag, VariationMode
 
-PROMPT_VERSION = "v4"
+PROMPT_VERSION = "v5"
 
-COMPOSITION_TEMPLATE = "composition_v4.md"
+COMPOSITION_TEMPLATE = "composition_v5.md"
 QUALITY_CHECK_TEMPLATE = "quality_check_v1.md"
+# 원본 배경을 함께 넘길 수 있을 때 쓰는 판. 배경 보존까지 비교한다.
+QUALITY_CHECK_WITH_BACKGROUND_TEMPLATE = "quality_check_v2.md"
+# 업로드 인물 사진까지 넘길 수 있을 때 쓰는 판. 얼굴 보존·신체 비율까지 본다.
+QUALITY_CHECK_WITH_SUBJECT_TEMPLATE = "quality_check_v3.md"
 STYLE_ANALYSIS_TEMPLATE = "style_analysis_v1.md"
 BACKGROUND_ANALYSIS_TEMPLATE = "background_analysis_v1.md"
 
@@ -63,6 +67,8 @@ def build_composition_prompt(
         .replace("{ground_plane}", place.ground_plane)
         .replace("{subject_zone}", place.subject_zone)
         .replace("{occluding_elements}", occluding)
+        .replace("{outfit_direction}", place.outfit_direction or _DEFAULT_OUTFIT)
+        .replace("{outfit_negative}", place.outfit_negative)
         .replace("{mood_tags}", place.mood_tags)
         .replace("{color_palette}", place.color_palette)
         .replace("{style_direction}", _style_direction(style_tags))
@@ -79,12 +85,36 @@ def build_background_analysis_prompt() -> str:
     return load_template(BACKGROUND_ANALYSIS_TEMPLATE)
 
 
-def build_quality_check_prompt() -> str:
+def build_quality_check_prompt(
+    with_background: bool = False, with_subject: bool = False
+) -> str:
+    """품질 검사 프롬프트. 함께 넘길 수 있는 참조 이미지 수에 따라 판이 다르다.
+
+    인물 사진은 배경과 함께일 때만 쓴다 — 프롬프트가 이미지 순서로 역할을
+    구분하므로, 배경을 빼고 인물만 두 번째로 넘기면 검사기가 그것을 배경으로
+    읽는다.
+    """
+    if with_background and with_subject:
+        return load_template(QUALITY_CHECK_WITH_SUBJECT_TEMPLATE)
+    if with_background:
+        return load_template(QUALITY_CHECK_WITH_BACKGROUND_TEMPLATE)
     return load_template(QUALITY_CHECK_TEMPLATE)
 
 
+# 의상 지침이 매칭되지 않은 장소에 쓰는 기본 문구. 옷을 바꾸지 말라는 것만 말한다.
+_DEFAULT_OUTFIT = (
+    "이 장소에 대한 별도 의상 지침은 없다. 첨부 인물 사진의 상의·하의·신발·"
+    "가방·안경을 그대로 유지하고, 원본에 없던 옷을 새로 지어내지 않는다."
+)
+
 # 팀 조사 지침이 인물 크기·구도를 이미 지정했는지 판별하는 표현들.
 _FRAMING_TERMS = ("전신", "반신", "중경", "클로즈업", "퍼센트", "%")
+
+# suggestedSubjectZone 안의 "~25% of frame height" 같은 표기.
+_ZONE_HEIGHT = re.compile(r"~?\s*(\d{1,3})\s*%")
+
+# 이 비율 이하면 인물이 화면에서 작다는 뜻이라, half-body 프레이밍과 양립하지 않는다.
+_FULL_BODY_ZONE_MAX = 50
 
 
 def _framing(place: PlaceContext) -> str:
@@ -94,9 +124,24 @@ def _framing(place: PlaceContext) -> str:
     사진을 `half-body`로 판정한 사례가 있었다. 두 지시를 나란히 넣으면 모델이
     충돌 속에서 임의로 하나를 고른다(실제로 반신이 나왔다). 사람이 장소를 보고
     쓴 지침이 사진 한 장만 본 판정보다 신뢰도가 높으므로 그쪽을 따른다.
+
+    조사 지침이 없어도 같은 충돌이 VLM 판정 내부에서 일어난다. `suggestedFraming`
+    이 half-body인데 `suggestedSubjectZone`은 "~25% of frame height"인 사진이
+    사용 가능한 것만 12장 있다 — 화면 높이의 4분의 1이면 전신이 작게 들어간다는
+    뜻이라 반신 프레이밍과 동시에 성립할 수 없다. 실제로 구룡폭포·정동심곡 결과가
+    zone을 무시하고 반신 크기로 나왔다. 두 값이 충돌하면 크기를 명시한 zone을
+    믿는다 — 그쪽이 이 사진에서 인물을 어디에 얼마만큼 넣을지 실제로 재본 값이다.
     """
     if any(term in place.pose_direction for term in _FRAMING_TERMS):
         return "exactly as the place guidance above specifies"
+
+    match = _ZONE_HEIGHT.search(place.subject_zone)
+    if (
+        match
+        and int(match.group(1)) <= _FULL_BODY_ZONE_MAX
+        and "half" in place.suggested_framing.lower()
+    ):
+        return "full-body, small in the frame — the subject zone below sets the exact size"
     return place.suggested_framing
 
 

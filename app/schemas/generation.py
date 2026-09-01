@@ -148,6 +148,22 @@ class GenerationJobResponse(BaseModel):
     metadata: GenerationMetadata
 
 
+class ErrorCodeSpec(BaseModel):
+    """`error.code` 하나의 계약. 백엔드가 재시도 여부를 자체 판단하지 않게 한다."""
+
+    code: str
+    httpStatus: int
+    retryable: bool
+    message: str
+
+
+class SafetyReasonSpec(BaseModel):
+    """`safety.reasonCode` 하나와 사용자에게 보일 문구."""
+
+    code: str
+    message: str
+
+
 class MetaResponse(BaseModel):
     provider: str
     imageModel: str
@@ -156,6 +172,11 @@ class MetaResponse(BaseModel):
     supportedAspectRatios: list[AspectRatio]
     maxUploadBytes: int
     resultTtlSeconds: int
+    # 아래 두 목록은 프론트/백엔드가 화면 문구와 재시도 정책을 자기 쪽에 다시
+    # 하드코딩하지 않도록 서버가 그대로 내보내는 카탈로그다. 부팅 시 한 번 읽어
+    # 캐시하면 된다.
+    errorCodes: list[ErrorCodeSpec]
+    safetyReasonCodes: list[SafetyReasonSpec]
 
 
 class HealthResponse(BaseModel):

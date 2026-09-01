@@ -68,7 +68,15 @@ class MockProvider(ImageCompositionProvider):
             lighting="맑은 날 낮, 부드러운 광량",
         )
 
-    async def check_quality(self, image: bytes, mime: str) -> QualityVerdict:
+    async def check_quality(
+        self,
+        image: bytes,
+        mime: str,
+        background: bytes | None = None,
+        background_mime: str | None = None,
+        subject: bytes | None = None,
+        subject_mime: str | None = None,
+    ) -> QualityVerdict:
         return QualityVerdict(passed=True, details={"provider": "mock"})
 
 

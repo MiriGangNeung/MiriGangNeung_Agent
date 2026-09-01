@@ -105,13 +105,15 @@ async def create_generation(
 
     # 요구사항 B4: 부적절한 사진은 분석 전에 차단하고 즉시 안내한다.
     # 따라서 검증(B3/B4)과 전처리(B5)는 Job을 만들기 전에 동기로 처리한다.
-    validate_photo(
+    report = validate_photo(
         data,
         photo.content_type,
         max_bytes=runtime.settings.max_upload_bytes,
         max_pixels=runtime.settings.max_image_pixels,
     )
-    clean_bytes, _ = preprocess_photo(data)
+    # 다인원 사진이면 주 피사체만 잘라낸 바이트가 돌아온다. 원본을 그대로 쓰면
+    # 합성 프롬프트에 두 명이 들어가 엉뚱한 사람이 섞인다.
+    clean_bytes, _ = preprocess_photo(report.data or data)
 
     # 배경도 사진과 마찬가지로 Job을 만들기 전에 동기로 해석·검증한다. 실제 배경이
     # 하나도 없는 채로 Job을 만들면 COMPOSITING 단계에서야 실패가 드러나 사용자

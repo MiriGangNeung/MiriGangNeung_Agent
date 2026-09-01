@@ -95,7 +95,11 @@ class _StubProvider(ImageCompositionProvider):
     async def analyze_background(self, image, mime):  # pragma: no cover
         return BackgroundAnalysis()
 
-    async def check_quality(self, image, mime):
+    async def check_quality(
+        self, image, mime, background=None, background_mime=None, subject=None, subject_mime=None
+    ):
+        self.seen_background = background
+        self.seen_subject = subject
         if self._error:
             raise self._error
         return self._verdict
@@ -106,6 +110,53 @@ async def test_safety_passes_clean_output():
 
     assert status is SafetyStatus.PASSED
     assert reason is None
+
+
+async def test_safety_forwards_background_for_comparison():
+    """검사기가 원본 배경을 봐야 간판 글자 변조를 잡을 수 있다."""
+    provider = _StubProvider(QualityVerdict(True))
+
+    await check_output(provider, b"result", "image/png", b"background", "image/jpeg")
+
+    assert provider.seen_background == b"background"
+
+
+async def test_safety_forwards_subject_photo_for_face_comparison():
+    """업로드 사진을 넘겨야 '자연스럽지만 남의 얼굴'을 잡을 수 있다."""
+    provider = _StubProvider(QualityVerdict(True))
+
+    await check_output(
+        provider, b"result", "image/png", b"background", "image/jpeg", b"subject", "image/png"
+    )
+
+    assert provider.seen_subject == b"subject"
+
+
+@pytest.mark.parametrize(
+    "reason_code",
+    ["FACE_NOT_PRESERVED", "PROPORTION_ERROR", "SCENE_SCALE_BROKEN"],
+)
+async def test_safety_rejects_new_v3_failures(reason_code: str):
+    """v3 검사판이 새로 잡는 세 가지도 재시도 없이 거부돼야 한다."""
+    provider = _StubProvider(QualityVerdict(False, reason_code))
+
+    with pytest.raises(AiServiceError) as excinfo:
+        await check_output(provider, b"x", "image/png", b"bg", "image/png", b"subj", "image/png")
+
+    assert excinfo.value.code == "SAFETY_REJECTED_OUTPUT"
+    assert excinfo.value.retryable is False
+    # 사용자에게 보일 문구가 사유별로 준비돼 있어야 한다.
+    assert "기준을 통과하지 못했습니다" not in excinfo.value.message
+
+
+async def test_safety_rejects_altered_background():
+    provider = _StubProvider(QualityVerdict(False, "BACKGROUND_ALTERED"))
+
+    with pytest.raises(AiServiceError) as excinfo:
+        await check_output(provider, b"x", "image/png", b"bg", "image/png")
+
+    assert excinfo.value.code == "SAFETY_REJECTED_OUTPUT"
+    assert excinfo.value.retryable is False
 
 
 @pytest.mark.parametrize(
@@ -155,7 +206,9 @@ class _FlakyProvider(ImageCompositionProvider):
     async def analyze_background(self, image, mime):  # pragma: no cover
         return BackgroundAnalysis()
 
-    async def check_quality(self, image, mime):  # pragma: no cover
+    async def check_quality(
+        self, image, mime, background=None, background_mime=None, subject=None, subject_mime=None
+    ):  # pragma: no cover
         return QualityVerdict(True)
 
 
@@ -322,3 +375,65 @@ def test_placeholder_background_is_a_valid_image():
     with Image.open(io.BytesIO(data)) as image:
         assert image.size == (1024, 1280)
         assert image.format == "PNG"
+
+
+# ── v5 프롬프트: 인물 크기·의상 ──────────────────────────────
+
+
+def test_framing_prefers_subject_zone_over_conflicting_half_body():
+    """'half-body'와 '화면 높이 25%'는 동시에 성립할 수 없다 — 크기를 명시한 쪽을 따른다.
+
+    실제로 구룡폭포·정동심곡 결과가 zone을 무시하고 반신 크기로 나왔다.
+    """
+    place = PlaceContext(
+        name="구룡폭포(소금강)",
+        scene_hint="계곡",
+        lighting_hint="흐림",
+        suggested_framing="half-body",
+        subject_zone="center-left, ~25% of frame height",
+    )
+
+    prompt = build_composition_prompt(place, AspectRatio.PORTRAIT, [])
+
+    assert "Frame the result as full-body, small in the frame" in prompt
+    assert "Frame the result as half-body" not in prompt
+
+
+def test_framing_keeps_half_body_when_zone_is_large():
+    """충돌이 아닐 때는 VLM 판정을 그대로 둔다."""
+    place = PlaceContext(
+        name="어딘가",
+        scene_hint="장면",
+        lighting_hint="빛",
+        suggested_framing="half-body",
+        subject_zone="center, ~70% of frame height",
+    )
+
+    assert "Frame the result as half-body" in build_composition_prompt(
+        place, AspectRatio.PORTRAIT, []
+    )
+
+
+def test_composition_prompt_always_carries_outfit_rules():
+    """의상 지침이 매칭되지 않은 장소도 '옷을 바꾸지 말라'는 지시는 받아야 한다."""
+    place = PlaceContext(name="이름 없는 곳", scene_hint="장면", lighting_hint="빛")
+
+    prompt = build_composition_prompt(place, AspectRatio.PORTRAIT, [])
+
+    assert "{outfit_direction}" not in prompt
+    assert "{outfit_negative}" not in prompt
+    assert "원본에 없던 옷을 새로 지어내지 않는다" in prompt
+
+
+def test_outfit_guide_matches_place_absent_from_survey_by_scene_keywords():
+    """조사 문서에 없는 장소도 장면 유형 키워드로 규칙이 붙어야 한다.
+
+    문서의 43개 장소는 표본이라, 장소명으로만 색인하면 송정해변·대관령박물관처럼
+    실제로 서비스하는 장소가 통째로 빈다.
+    """
+    from app.places.outfit_guides import get_outfit_scene_type
+
+    assert get_outfit_scene_type(None, "모래사장과 수평선이 보이는 사진").id == "beach"
+    assert get_outfit_scene_type(None, "박물관 외관과 전시실").id == "museum"
+    # 장소명이 문서에 있으면 키워드보다 우선한다.
+    assert get_outfit_scene_type("안반데기", "모래사장").id == "highland"

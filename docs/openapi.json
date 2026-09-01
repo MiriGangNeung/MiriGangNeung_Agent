@@ -1,0 +1,890 @@
+{
+  "components": {
+    "schemas": {
+      "AspectRatio": {
+        "description": "요구사항 E4: SNS에 적합한 비율.",
+        "enum": [
+          "1:1",
+          "4:5",
+          "9:16"
+        ],
+        "title": "AspectRatio",
+        "type": "string"
+      },
+      "Body_create_generation_v1_generations_post": {
+        "properties": {
+          "aspectRatio": {
+            "$ref": "#/components/schemas/AspectRatio",
+            "default": "4:5"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "배경 이미지. 백엔드가 Place.thumbnailUrl/PlaceImage.imageUrl(한국관광공사 이미지)에서 가져와 전달해야 한다. mock provider가 아니면 사실상 필수.",
+            "title": "Background"
+          },
+          "backgroundImageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "사용자가 프론트에서 고른 배경 사진의 원본 URL(PlaceImage.imageUrl). place_insights.json에서 그 사진 정확히 하나의 사전 분석(카메라/인물 배치 등)을 찾는 데 쓴다. 없으면 해당 장소의 대표 이미지 분석으로 폴백한다.",
+            "title": "Backgroundimageurl"
+          },
+          "idempotencyKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotencykey"
+          },
+          "onePickPlaceId": {
+            "description": "원픽 관광지 ID (백엔드 Place.id UUID)",
+            "title": "Onepickplaceid",
+            "type": "string"
+          },
+          "photo": {
+            "contentMediaType": "application/octet-stream",
+            "description": "사용자 사진 (JPG/PNG/WEBP, 최대 10MB)",
+            "title": "Photo",
+            "type": "string"
+          },
+          "placeDescription": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Place.description (프롬프트 힌트)",
+            "title": "Placedescription"
+          },
+          "placeName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Place.name (프롬프트 힌트)",
+            "title": "Placename"
+          },
+          "placeRegion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Place.region (프롬프트 힌트)",
+            "title": "Placeregion"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          },
+          "variationMode": {
+            "$ref": "#/components/schemas/VariationMode",
+            "default": "same",
+            "description": "요구사항 E4 재생성 옵션 중 '구도, 스타일만 살짝 조정'. same(기본, 동일 요청은 재사용) | new_pose(다른 구도/포즈) | new_mood(다른 분위기/톤). '다른 배경 선택' 옵션은 onePickPlaceId/background를 바꿔 재요청하면 된다."
+          }
+        },
+        "required": [
+          "photo",
+          "onePickPlaceId"
+        ],
+        "title": "Body_create_generation_v1_generations_post",
+        "type": "object"
+      },
+      "ErrorCodeSpec": {
+        "description": "`error.code` 하나의 계약. 백엔드가 재시도 여부를 자체 판단하지 않게 한다.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "httpStatus": {
+            "title": "Httpstatus",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "httpStatus",
+          "retryable",
+          "message"
+        ],
+        "title": "ErrorCodeSpec",
+        "type": "object"
+      },
+      "ErrorPayload": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "ErrorPayload",
+        "type": "object"
+      },
+      "GenerationJobResponse": {
+        "properties": {
+          "coarseStatus": {
+            "title": "Coarsestatus",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/GenerationMetadata"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "providerJobId": {
+            "title": "Providerjobid",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "safety": {
+            "$ref": "#/components/schemas/SafetyReport"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        },
+        "required": [
+          "providerJobId",
+          "status",
+          "coarseStatus",
+          "stage",
+          "progress",
+          "metadata"
+        ],
+        "title": "GenerationJobResponse",
+        "type": "object"
+      },
+      "GenerationMetadata": {
+        "description": "요구사항 E9: 생성 이력에 남겨야 하는 값들.",
+        "properties": {
+          "attempts": {
+            "default": 0,
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "durationMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durationms"
+          },
+          "estimatedCostUsd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedcostusd"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "onePickPlaceId": {
+            "title": "Onepickplaceid",
+            "type": "string"
+          },
+          "promptVersion": {
+            "title": "Promptversion",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "styleTags": {
+            "items": {
+              "$ref": "#/components/schemas/StyleTag"
+            },
+            "title": "Styletags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "promptVersion",
+          "onePickPlaceId",
+          "createdAt"
+        ],
+        "title": "GenerationMetadata",
+        "type": "object"
+      },
+      "GenerationResult": {
+        "properties": {
+          "aspectRatio": {
+            "$ref": "#/components/schemas/AspectRatio"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "imageReference": {
+            "title": "Imagereference",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "imageReference",
+          "width",
+          "height",
+          "aspectRatio"
+        ],
+        "title": "GenerationResult",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "jobStore": {
+            "title": "Jobstore",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "jobStore",
+          "provider"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "JobStatus": {
+        "enum": [
+          "QUEUED",
+          "ANALYZING",
+          "COMPOSITING",
+          "QUALITY_CHECK",
+          "DONE",
+          "FAILED"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "MetaResponse": {
+        "properties": {
+          "errorCodes": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorCodeSpec"
+            },
+            "title": "Errorcodes",
+            "type": "array"
+          },
+          "imageModel": {
+            "title": "Imagemodel",
+            "type": "string"
+          },
+          "maxUploadBytes": {
+            "title": "Maxuploadbytes",
+            "type": "integer"
+          },
+          "promptVersion": {
+            "title": "Promptversion",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "resultTtlSeconds": {
+            "title": "Resultttlseconds",
+            "type": "integer"
+          },
+          "safetyReasonCodes": {
+            "items": {
+              "$ref": "#/components/schemas/SafetyReasonSpec"
+            },
+            "title": "Safetyreasoncodes",
+            "type": "array"
+          },
+          "supportedAspectRatios": {
+            "items": {
+              "$ref": "#/components/schemas/AspectRatio"
+            },
+            "title": "Supportedaspectratios",
+            "type": "array"
+          },
+          "visionModel": {
+            "title": "Visionmodel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "imageModel",
+          "visionModel",
+          "promptVersion",
+          "supportedAspectRatios",
+          "maxUploadBytes",
+          "resultTtlSeconds",
+          "errorCodes",
+          "safetyReasonCodes"
+        ],
+        "title": "MetaResponse",
+        "type": "object"
+      },
+      "SafetyReasonSpec": {
+        "description": "`safety.reasonCode` 하나와 사용자에게 보일 문구.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "SafetyReasonSpec",
+        "type": "object"
+      },
+      "SafetyReport": {
+        "properties": {
+          "reasonCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoncode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SafetyStatus",
+            "default": "UNKNOWN"
+          }
+        },
+        "title": "SafetyReport",
+        "type": "object"
+      },
+      "SafetyStatus": {
+        "enum": [
+          "PASSED",
+          "REJECTED",
+          "UNKNOWN"
+        ],
+        "title": "SafetyStatus",
+        "type": "string"
+      },
+      "StyleTag": {
+        "description": "요구사항 B6: 태그 + 신뢰도 점수.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "value",
+          "confidence"
+        ],
+        "title": "StyleTag",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VariationMode": {
+        "description": "요구사항 E4: '허용된 횟수 내에서 구도나 분위기를 변경해 다시 생성'.\n\nUI 설계서 재생성 버튼의 두 옵션 중 '다른 배경 선택'은 onePickPlaceId/background를\n바꿔 다시 요청하면 되므로 이미 지원된다. 이 값은 나머지 옵션인\n'구도, 스타일만 살짝 조정'에 대응한다.",
+        "enum": [
+          "same",
+          "new_pose",
+          "new_mood"
+        ],
+        "title": "VariationMode",
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "description": "사용자 사진과 강릉 관광지 배경을 합성하는 비동기 Job 서비스",
+    "title": "미리강릉 사진 합성 AI",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/v1/generations": {
+      "post": {
+        "operationId": "create_generation_v1_generations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_generation_v1_generations_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Generation",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/v1/generations/{provider_job_id}": {
+      "get": {
+        "operationId": "get_generation_v1_generations__provider_job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_job_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Generation",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/v1/generations/{provider_job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_generation_v1_generations__provider_job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_job_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Generation",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/v1/generations/{provider_job_id}/result": {
+      "get": {
+        "operationId": "download_result_v1_generations__provider_job_id__result_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_job_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Result",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/v1/meta": {
+      "get": {
+        "operationId": "meta_v1_meta_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Meta",
+        "tags": [
+          "meta"
+        ]
+      }
+    }
+  }
+}

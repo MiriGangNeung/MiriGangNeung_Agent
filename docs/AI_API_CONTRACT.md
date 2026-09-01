@@ -91,6 +91,11 @@ X-API-Key: ${AI_API_KEY}
 `09_AI_INTEGRATION.md`가 정의한 축약형(`RUNNING|DONE|FAILED`)도 모든 응답에 `coarseStatus`로
 함께 실어 보낸다. 두 문서가 서로 어긋나지 않도록 하기 위함이며, 백엔드는 필요한 쪽을 골라 쓰면 된다.
 
+**다인원 사진은 자동으로 잘라낸다.** 얼굴이 둘 이상 검출되면, 가장 큰 얼굴이 두 번째보다
+충분히 크고(면적 1.5배 이상) 다른 얼굴을 잘라 낼 수 있을 때 주 피사체만 크롭해서 합성에
+쓴다. 그 조건을 만족하지 못할 때만 `MULTIPLE_PERSONS`로 거부한다. 백엔드가 보내는 값은
+달라지지 않으며, 크롭 여부는 응답에 별도로 표시되지 않는다.
+
 사진 유효성 검사(B3/B4)는 **Job을 만들기 전에** 동기로 실행된다. 즉 `POST /v1/generations`가
 4xx를 반환했다면 Job 자체가 생성되지 않은 것이고, 202를 받았다면 이후 상태는 항상
 `QUEUED`부터 시작한다.
@@ -135,7 +140,7 @@ Base path: `/v1` (헬스체크만 예외로 루트의 `/health`)
   "metadata": {
     "provider": "gemini",
     "model": "gemini-3.1-flash-image",
-    "promptVersion": "v3",
+    "promptVersion": "v5",
     "onePickPlaceId": "9c1d4f2e-58a1-4b3a-9d2e-1f6a2b7c9d10",
     "createdAt": "2026-08-08T12:00:00+00:00",
     "completedAt": null,
@@ -151,11 +156,18 @@ Base path: `/v1` (헬스체크만 예외로 루트의 `/health`)
 §2-7) — 정확한 정산이 아니라 단위경제성 추적용 근사치다. `AI_PROVIDER=mock`이면 `0.0`.
 합성이 끝나면 공급자가 실제로 돌려준 값으로 다시 채워진다(보통 같은 값).
 
-`promptVersion`이 `v3`(2026-08-22~)로 바뀌었다 — API 필드 변화는 없지만, 결과물의 톤이
-바뀌었다: 인물의 포즈·표정을 원본 사진 그대로가 아니라 장면에 맞게 자연스럽게 조정하고
-(예: 정면 무표정 대신 자연스러운 미소, 풍경을 바라보는 자세), 색보정도 인스타그램풍
-여행 사진 톤으로 조정한다. 신원(얼굴 생김새·의상·체형)은 이전과 동일하게 보존된다.
-상세는 `docs/PROMPTS.md`의 v3 항목 참고.
+`promptVersion`이 `v5`(2026-08-31~)다. **API 필드는 바뀌지 않는다** — 프론트·백엔드가
+고칠 것은 없고, 달라지는 것은 결과물의 성격과 거부 사유의 종류다.
+
+- v3~v4: 포즈·표정을 장면에 맞게 재조정하고, 조명을 배경 사진에서 직접 읽어 맞춘다.
+- v5: 인체 비율(7~7.5등신, 다리는 키의 절반)과 배경과의 스케일 정합을 수치로 강제하고,
+  얼굴 보존을 최우선 규칙으로 올렸다. 의상은 장면 유형별 지침
+  (`assets/places/outfit_guides.json`)을 따라 원본 옷을 유지한다.
+
+품질 검사도 함께 올라가서, **업로드한 인물 사진과 원본 배경을 검사기에 함께 넘겨**
+얼굴이 같은 사람인지·신체 비율이 사람의 것인지·배경이 보존됐는지를 대조한다. 그 결과
+`FACE_NOT_PRESERVED`, `PROPORTION_ERROR`, `SCENE_SCALE_BROKEN` 세 가지 거부 사유가
+새로 나올 수 있다 (아래 "안전성 거부 사유" 표). 상세는 `docs/PROMPTS.md` 참고.
 
 **오류 응답** — 아래 오류 코드 표 참고. 사진 유효성 검사(B3/B4)에 걸리면 Job을 만들지 않고
 바로 4xx를 반환하므로, 백엔드는 이 시점의 오류를 사용자에게 "재업로드 방법 안내"로 그대로
@@ -183,7 +195,7 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
   "metadata": {
     "provider": "gemini",
     "model": "gemini-3.1-flash-image",
-    "promptVersion": "v3",
+    "promptVersion": "v5",
     "onePickPlaceId": "9c1d4f2e-58a1-4b3a-9d2e-1f6a2b7c9d10",
     "createdAt": "2026-08-08T12:00:00+00:00",
     "completedAt": "2026-08-08T12:00:24+00:00",
@@ -216,8 +228,51 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
 
 ### `GET /v1/meta`
 
-현재 provider/model/promptVersion, 지원 비율, 업로드 상한을 반환한다. 백엔드가 부팅 시
-확인용으로 호출할 수 있다.
+현재 provider/model/promptVersion, 지원 비율, 업로드 상한, 그리고 **오류 코드와 안전성
+거부 사유의 전체 카탈로그**를 반환한다. 뒤의 두 목록은 프론트·백엔드가 화면 문구와
+재시도 정책을 자기 쪽에 다시 하드코딩하지 않기 위한 것이다 — 부팅 시 한 번 읽어
+캐시하면 된다.
+
+```json
+{
+  "provider": "gemini",
+  "imageModel": "gemini-3.1-flash-image",
+  "visionModel": "gemini-3.1-flash-lite",
+  "promptVersion": "v5",
+  "supportedAspectRatios": ["1:1", "4:5", "9:16"],
+  "maxUploadBytes": 10485760,
+  "resultTtlSeconds": 86400,
+  "errorCodes": [
+    { "code": "PROVIDER_TIMEOUT", "httpStatus": 504, "retryable": true,
+      "message": "AI 생성이 시간 내에 끝나지 않았습니다." }
+  ],
+  "safetyReasonCodes": [
+    { "code": "FACE_NOT_PRESERVED",
+      "message": "결과의 얼굴이 업로드한 사진의 인물과 달라 제공할 수 없습니다." }
+  ]
+}
+```
+
+`errorCodes`는 아래 "오류 코드와 재시도 정책" 표와 같은 내용이고, `safetyReasonCodes`는
+`safety.reasonCode`로 실제로 나갈 수 있는 값 전부다. **표를 사람이 읽고 옮겨 적는 대신
+이 응답을 쓰는 편이 안전하다** — 표는 갱신을 잊을 수 있지만 이 응답은 코드에서 직접 나온다.
+
+## OpenAPI 스펙
+
+전체 스펙이 [`docs/openapi.json`](./openapi.json)에 커밋돼 있다. 서버를 띄우지 않고도
+클라이언트를 생성할 수 있다.
+
+```bash
+# 스펙 갱신 (엔드포인트나 스키마를 바꾼 뒤)
+python scripts/export_openapi.py
+
+# 코드와 일치하는지 확인만 (CI)
+python scripts/export_openapi.py --check
+```
+
+`tests/test_api_e2e.py::test_committed_openapi_spec_matches_the_code`가 같은 검사를 하므로,
+스펙을 바꾸고 파일 갱신을 잊으면 테스트가 깨진다. 서버를 띄운 상태에서는
+`/docs`(Swagger UI)와 `/openapi.json`도 그대로 쓸 수 있다.
 
 ## 오류 코드와 재시도 정책
 
@@ -240,7 +295,7 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
 | `IMAGE_TOO_LARGE` | 413 | false | 10MB 초과 (B1) |
 | `IMAGE_TOO_MANY_PIXELS` | 413 | false | 압축 폭탄 방지 |
 | `NO_PERSON_DETECTED` | 422 | false | 인물 미검출 (B3, B4) |
-| `MULTIPLE_PERSONS` | 422 | false | 인물 2명 이상 (B3) |
+| `MULTIPLE_PERSONS` | 422 | false | 인물 2명 이상이고 주 피사체를 자동으로 분리할 수 없음 (B3) — 아래 참고 |
 | `IMAGE_TOO_BLURRY` | 422 | false | 얼굴 흐림 (B4) |
 | `FACE_OCCLUDED` | 422 | false | 얼굴 가림 (B4) |
 | `SAFETY_REJECTED_INPUT` | 422 | **false** | 입력 안전성 거부 (E5) |
@@ -256,6 +311,29 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
 | `JOB_NOT_READY` | 409 | false | 완료 전 결과 다운로드 시도 |
 | `RESULT_EXPIRED` | 410 | false | TTL 경과 후 결과 다운로드 시도 |
 | `INTERNAL_ERROR` | 500 | true | 예상치 못한 서버 오류 |
+
+### 안전성 거부 사유 (`safety.reasonCode`)
+
+`SAFETY_REJECTED_OUTPUT`으로 실패한 Job은 `safety.reasonCode`에 아래 값 중 하나를 싣는다.
+`error.message`에도 같은 뜻의 한국어 문구가 들어가므로 그대로 노출해도 되지만, 화면마다
+다른 안내를 하고 싶으면 이 코드로 분기한다. 전체 목록은 `GET /v1/meta`의
+`safetyReasonCodes`로도 받을 수 있다.
+
+| reasonCode | 뜻 |
+|---|---|
+| `HARMFUL_CONTENT` | 결과에 부적절한 내용이 포함됨 |
+| `FACE_NOT_PRESERVED` | 결과의 얼굴이 업로드한 인물과 다름 — 재시도 안내가 적절하다 |
+| `FACE_DISTORTED` | 얼굴이 뭉개지거나 부자연스럽게 생성됨 |
+| `PROPORTION_ERROR` | 신체 비율이 사람의 것이 아님 (등신·다리 길이) |
+| `ANATOMY_ERROR` | 손발 개수·관절 등 신체 오류, 하체 소실 |
+| `SCENE_SCALE_BROKEN` | 인물과 배경의 크기·원근 불일치 |
+| `BACKGROUND_ALTERED` | 배경 관광지 사진이 원본과 다르게 변형됨 (간판 글자 등) |
+| `PERSON_COUNT_MISMATCH` | 합성된 인물 수가 1이 아님 |
+| `SEVERE_ARTIFACTS` | 결과 품질이 기준 미달 |
+| `PROVIDER_BLOCKED` | 공급자 자체 안전 필터가 차단 |
+
+> `FACE_NOT_PRESERVED`는 업로드 사진의 얼굴이 작을수록(대략 100px 미만) 발생률이 높다.
+> 프론트에서 업로드 단계에 얼굴 크기 안내를 두면 실패를 줄일 수 있다.
 
 ## 개인정보 처리
 

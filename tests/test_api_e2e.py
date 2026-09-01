@@ -68,8 +68,42 @@ def test_meta_reports_supported_aspect_ratios(client):
     payload = client.get("/v1/meta").json()
 
     assert payload["supportedAspectRatios"] == ["1:1", "4:5", "9:16"]
-    assert payload["promptVersion"] == "v4"
+    assert payload["promptVersion"] == "v5"
     assert payload["provider"] == "mock"
+
+
+def test_meta_publishes_error_and_safety_catalogs(client):
+    """프론트/백엔드가 화면 문구와 재시도 정책을 자기 쪽에 복붙하지 않게 한다."""
+    payload = client.get("/v1/meta").json()
+
+    errors = {row["code"]: row for row in payload["errorCodes"]}
+    # 재시도 정책이 코드마다 실려 나가야 백엔드가 자체 판단하지 않는다.
+    assert errors["PROVIDER_TIMEOUT"]["retryable"] is True
+    assert errors["PROVIDER_TIMEOUT"]["httpStatus"] == 504
+    assert errors["SAFETY_REJECTED_OUTPUT"]["retryable"] is False
+    assert errors["BACKGROUND_REQUIRED"]["httpStatus"] == 400
+
+    reasons = {row["code"]: row["message"] for row in payload["safetyReasonCodes"]}
+    # safety.reasonCode로 실제로 나갈 수 있는 값이 전부 카탈로그에 있어야 한다.
+    for code in ("FACE_NOT_PRESERVED", "PROPORTION_ERROR", "SCENE_SCALE_BROKEN",
+                 "BACKGROUND_ALTERED", "PERSON_COUNT_MISMATCH"):
+        assert reasons[code]
+
+
+def test_committed_openapi_spec_matches_the_code():
+    """docs/openapi.json이 스펙과 어긋난 채 커밋되는 것을 막는다.
+
+    프론트/백엔드가 이 파일로 클라이언트를 생성하므로, 낡은 스펙은 조용히
+    잘못된 클라이언트를 만들어 낸다.
+    """
+    import json
+    import pathlib
+
+    from app.main import app
+
+    committed = pathlib.Path("docs/openapi.json")
+    assert committed.is_file(), "scripts/export_openapi.py를 실행해 스펙을 커밋하세요."
+    assert json.loads(committed.read_text(encoding="utf-8")) == app.openapi()
 
 
 def test_full_generation_roundtrip(client):
@@ -82,7 +116,7 @@ def test_full_generation_roundtrip(client):
     assert body["coarseStatus"] == "RUNNING"
     assert body["progress"] == 0
     assert body["metadata"]["onePickPlaceId"] == "anmok-beach"
-    assert body["metadata"]["promptVersion"] == "v4"
+    assert body["metadata"]["promptVersion"] == "v5"
     # 검토 총평 §2-7: 생성 완료 전, 요청 접수 시점에 이미 근사 비용이 채워져 있어야 한다.
     assert body["metadata"]["estimatedCostUsd"] == 0.0
 

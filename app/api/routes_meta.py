@@ -5,9 +5,17 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.api.deps import Runtime, get_runtime
+from app.core.errors import ERROR_SPECS
 from app.core.security import require_api_key
 from app.pipeline.prompt import PROMPT_VERSION
-from app.schemas.generation import AspectRatio, HealthResponse, MetaResponse
+from app.pipeline.safety import SAFETY_REASON_MESSAGES
+from app.schemas.generation import (
+    AspectRatio,
+    ErrorCodeSpec,
+    HealthResponse,
+    MetaResponse,
+    SafetyReasonSpec,
+)
 
 router = APIRouter(tags=["meta"])
 
@@ -27,4 +35,17 @@ async def meta(runtime: Runtime = Depends(get_runtime)) -> MetaResponse:
         supportedAspectRatios=list(AspectRatio),
         maxUploadBytes=runtime.settings.max_upload_bytes,
         resultTtlSeconds=runtime.settings.result_ttl_seconds,
+        errorCodes=[
+            ErrorCodeSpec(
+                code=spec.code,
+                httpStatus=spec.http_status,
+                retryable=spec.retryable,
+                message=spec.message,
+            )
+            for spec in ERROR_SPECS.values()
+        ],
+        safetyReasonCodes=[
+            SafetyReasonSpec(code=code, message=message)
+            for code, message in SAFETY_REASON_MESSAGES.items()
+        ],
     )

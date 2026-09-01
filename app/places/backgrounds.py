@@ -30,6 +30,11 @@ from PIL import Image
 
 from app.core.config import get_settings
 from app.places.insights import ImageInsight, get_image_insight
+from app.places.outfit_guides import (
+    get_composition_rules,
+    get_outfit_common,
+    get_outfit_scene_type,
+)
 from app.places.pose_guides import get_pose_guide, get_scene_type_guides
 from app.providers.base import BackgroundAnalysis
 
@@ -79,6 +84,10 @@ class PlaceContext:
     # 팀이 조사한 장소별 포즈 지침 (assets/places/pose_guides.json). 조사 문서에
     # 없는 장소는 빈 문자열이고, 프롬프트는 일반적인 포즈 지시만 쓴다.
     pose_direction: str = ""
+    # 팀이 조사한 의상 지침 (assets/places/outfit_guides.json). 비어 있으면
+    # 프롬프트가 "원본 옷을 유지하라"는 기본 문구만 쓴다.
+    outfit_direction: str = ""
+    outfit_negative: str = ""
     pose_negative: str = ""
 
 
@@ -192,20 +201,55 @@ def resolve_place_context(
        (3이 시도됐지만 실패해 빈 분석만 돌아온 경우의 폴백이기도 하다.)
     5. 넷 다 없으면 범용 문구로 채운다.
 
-    어느 경로로 결정됐든, 마지막에 장소별 포즈 지침(`pose_guides.json`)을 이름으로
-    찾아 붙인다 — 이건 사진이 아니라 장소에 딸린 정보라 위 우선순위와 무관하다.
+    어느 경로로 결정됐든, 마지막에 장소별 포즈 지침(`pose_guides.json`)과 의상
+    지침(`outfit_guides.json`)을 붙인다 — 둘 다 사진이 아니라 장소·장면 유형에
+    딸린 정보라 위 우선순위와 무관하다.
     """
     insight = get_image_insight(one_pick_place_id, background_image_url)
-    return _with_pose_guide(
-        _resolve_place_context(
-            one_pick_place_id,
-            place_name=place_name,
-            place_region=place_region,
-            place_description=place_description,
-            background_analysis=background_analysis,
-            background_image_url=background_image_url,
-        ),
-        insight,
+    context = _resolve_place_context(
+        one_pick_place_id,
+        place_name=place_name,
+        place_region=place_region,
+        place_description=place_description,
+        background_analysis=background_analysis,
+        background_image_url=background_image_url,
+    )
+    return _with_outfit_guide(_with_pose_guide(context, insight), insight)
+
+
+def _with_outfit_guide(context: PlaceContext, insight: ImageInsight | None) -> PlaceContext:
+    """장면 유형 의상 규칙 + 구도 배치 규칙을 붙인다.
+
+    공통 규칙(원본 옷 유지, 옷의 물리, 장면 광 반영)은 매칭 여부와 무관하게 항상
+    넣는다 — 의상이 통째로 바뀌는 사고는 매칭되지 않은 장소에서도 똑같이 난다.
+    """
+    common = get_outfit_common()
+    text = ""
+    if insight is not None:
+        text = " ".join(
+            [
+                insight.scene_hint,
+                context.ground_plane,
+                context.subject_zone,
+                *insight.notable_features,
+            ]
+        )
+
+    lines = [common.garment_reference]
+    scene = get_outfit_scene_type(context.name, text)
+    if scene is not None:
+        lines.append(f"[{scene.label}] {scene.prompt}")
+    lines.extend(rule.prompt for rule in get_composition_rules(text))
+    lines.extend([common.garment_physics, common.scene_fit])
+
+    negatives = [common.negative]
+    if scene is not None and scene.negative:
+        negatives.append(scene.negative)
+
+    return replace(
+        context,
+        outfit_direction="\n".join(f"- {line}" for line in lines if line),
+        outfit_negative=", ".join(n for n in negatives if n),
     )
 
 

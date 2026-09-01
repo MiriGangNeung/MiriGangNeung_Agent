@@ -159,7 +159,15 @@ class GenerationRunner:
 
         # ── QUALITY_CHECK: 안전성·품질 (E5) ──────────────────
         self._advance(record, JobStatus.QUALITY_CHECK)
-        safety_status, reason = await safety.check_output(self.provider, output.image, output.mime)
+        safety_status, reason = await safety.check_output(
+            self.provider,
+            output.image,
+            output.mime,
+            background_image,
+            background_mime,
+            person_image,
+            person_mime,
+        )
         record.safety_status = safety_status
         record.safety_reason_code = reason
         self.store.save(record)

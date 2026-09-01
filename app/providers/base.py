@@ -91,8 +91,25 @@ class ImageCompositionProvider(abc.ABC):
         """
 
     @abc.abstractmethod
-    async def check_quality(self, image: bytes, mime: str) -> QualityVerdict:
-        """생성 결과의 안전성·품질을 검사한다 (요구사항 E5)."""
+    async def check_quality(
+        self,
+        image: bytes,
+        mime: str,
+        background: bytes | None = None,
+        background_mime: str | None = None,
+        subject: bytes | None = None,
+        subject_mime: str | None = None,
+    ) -> QualityVerdict:
+        """생성 결과의 안전성·품질을 검사한다 (요구사항 E5).
+
+        `background`를 함께 주면 원본 배경과 비교해 배경이 보존됐는지도 본다.
+        결과만 봐서는 원래 간판에 뭐라 쓰여 있었는지 알 수 없어서, 합성 모델이
+        한글 간판을 다른 글자로 다시 그려도 잡아내지 못했다.
+
+        `subject`(업로드 인물 사진)까지 주면 얼굴이 그 사람인지 비교한다. 결과만
+        보고 판정하던 `face_natural`은 "자연스러운 얼굴인가"만 물어서, 잘 그려진
+        남의 얼굴을 그대로 통과시켰다.
+        """
 
 
 class ProviderTimeout(Exception):

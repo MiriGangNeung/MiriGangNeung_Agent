@@ -35,6 +35,9 @@ BLUR_VARIANCE_THRESHOLD = 45.0
 MIN_FACE_AREA_RATIO = 0.004
 # 눈 검출 ROI를 최소 이 높이까지 확대한 뒤 판정한다 (`_is_face_occluded` 참고).
 EYE_ROI_MIN_HEIGHT = 120
+# 여러 명이 찍힌 사진에서 가장 큰 얼굴이 두 번째보다 이 배수 이상 커야 주 피사체가
+# 분명하다고 본다 (`_crop_to_primary` 참고).
+PRIMARY_FACE_DOMINANCE = 1.5
 
 
 @dataclass
@@ -56,6 +59,10 @@ class ValidationReport:
     height: int
     face: FaceBox
     sharpness: float
+    # 이후 단계가 실제로 써야 할 바이트. 여러 명이 찍힌 사진에서 주 피사체만 잘라낸
+    # 경우 원본이 아니라 잘라낸 이미지가 들어간다. 기본값은 호출부 호환을 위한 것이다.
+    data: bytes = b""
+    cropped_from_group: bool = False
 
 
 def validate_photo(
@@ -80,11 +87,23 @@ def validate_photo(
 
     if not faces:
         raise AiServiceError("NO_PERSON_DETECTED")
-    if len(faces) > 1:
-        # P0에서는 한 명이 촬영된 사진만 허용한다 (요구사항 B3).
-        raise AiServiceError("MULTIPLE_PERSONS")
 
-    face = faces[0]
+    cropped_from_group = False
+    if len(faces) > 1:
+        # 요구사항 B3은 1인 사진만 허용하지만, 뒤에 다른 사람이 걸친 셀피까지 전부
+        # 거부하면 실사용 사진 상당수가 업로드 단계에서 막힌다. 주 피사체가 분명하면
+        # 그 인물만 잘라 살린다.
+        picked = _crop_to_primary(matrix, faces)
+        if picked is None:
+            raise AiServiceError("MULTIPLE_PERSONS")
+        matrix, face = picked
+        data = _encode_png(matrix)
+        height, width = matrix.shape[:2]
+        cropped_from_group = True
+        logger.info("다인원 사진에서 주 피사체를 잘라냈습니다 (%dx%d).", width, height)
+    else:
+        face = faces[0]
+
     if face.area / float(width * height) < MIN_FACE_AREA_RATIO:
         raise AiServiceError("NO_PERSON_DETECTED", "인물이 너무 작게 찍혀 있습니다.")
 
@@ -96,8 +115,83 @@ def validate_photo(
         raise AiServiceError("FACE_OCCLUDED")
 
     return ValidationReport(
-        format=image_format, width=width, height=height, face=face, sharpness=sharpness
+        format=image_format,
+        width=width,
+        height=height,
+        face=face,
+        sharpness=sharpness,
+        data=data,
+        cropped_from_group=cropped_from_group,
     )
+
+
+def _crop_to_primary(
+    matrix: np.ndarray, faces: list[FaceBox]
+) -> tuple[np.ndarray, FaceBox] | None:
+    """가장 큰 얼굴만 남도록 잘라낸 (행렬, 얼굴). 주 피사체가 불분명하면 None.
+
+    비슷한 크기로 나란히 선 단체 사진은 누가 주인공인지 알 수 없다. 그런 사진을
+    임의로 잘라내면 조용히 엉뚱한 사람으로 합성되므로, 크기 차이가 뚜렷할 때만
+    자른다.
+    """
+    ordered = sorted(faces, key=lambda f: f.area, reverse=True)
+    primary = ordered[0]
+    if primary.area < ordered[1].area * PRIMARY_FACE_DOMINANCE:
+        return None
+
+    height, width = matrix.shape[:2]
+    top, left, bottom, right = 0, 0, height, width
+
+    for other in ordered[1:]:
+        if not _intersects(other, top, left, bottom, right):
+            continue
+        # 주 얼굴을 온전히 남기면서 이 얼굴을 잘라낼 수 있는 방향들 중 손실이 가장
+        # 작은 쪽을 고른다. 어느 방향으로도 분리되지 않으면 (얼굴이 겹쳐 있으면) 포기.
+        options = []
+        if other.y >= primary.y + primary.h:
+            options.append(((bottom - other.y) * (right - left), "bottom", other.y))
+        if other.y + other.h <= primary.y:
+            options.append(((other.y + other.h - top) * (right - left), "top", other.y + other.h))
+        if other.x >= primary.x + primary.w:
+            options.append(((right - other.x) * (bottom - top), "right", other.x))
+        if other.x + other.w <= primary.x:
+            options.append(((other.x + other.w - left) * (bottom - top), "left", other.x + other.w))
+        if not options:
+            return None
+
+        _, side, value = min(options)
+        if side == "bottom":
+            bottom = min(bottom, value)
+        elif side == "top":
+            top = max(top, value)
+        elif side == "right":
+            right = min(right, value)
+        else:
+            left = max(left, value)
+
+    cropped = matrix[top:bottom, left:right]
+    if cropped.size == 0:
+        return None
+
+    # 잘라낸 뒤 실제로 한 명만 남았는지 다시 확인한다 — 검출되지 않은 얼굴이 남아
+    # 있을 수 있고, 좌표도 새 프레임 기준으로 다시 받아야 한다.
+    remaining = detect_faces(cropped)
+    if len(remaining) != 1:
+        return None
+    return cropped, remaining[0]
+
+
+def _intersects(face: FaceBox, top: int, left: int, bottom: int, right: int) -> bool:
+    return (
+        face.x < right and face.x + face.w > left and face.y < bottom and face.y + face.h > top
+    )
+
+
+def _encode_png(matrix: np.ndarray) -> bytes:
+    ok, buffer = cv2.imencode(".png", matrix)
+    if not ok:
+        raise AiServiceError("INVALID_IMAGE_FORMAT", "이미지를 다시 인코딩할 수 없습니다.")
+    return buffer.tobytes()
 
 
 def _probe_real_format(data: bytes) -> tuple[str, tuple[int, int]]:

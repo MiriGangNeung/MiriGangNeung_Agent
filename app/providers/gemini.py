@@ -143,29 +143,72 @@ class GeminiProvider(ImageCompositionProvider):
         )
 
     # ── 품질·안전성 검사 (E5) ───────────────────────────────
-    async def check_quality(self, image: bytes, mime: str) -> QualityVerdict:
-        payload = await self._ask_json(image, mime, build_quality_check_prompt())
+    async def check_quality(
+        self,
+        image: bytes,
+        mime: str,
+        background: bytes | None = None,
+        background_mime: str | None = None,
+        subject: bytes | None = None,
+        subject_mime: str | None = None,
+    ) -> QualityVerdict:
+        # 이미지 순서가 곧 프롬프트의 [result] / [original background] / [subject photo]
+        # 순서다. 배경 없이 인물만 넘기면 두 번째 자리가 어긋나므로 그 조합은 쓰지 않는다.
+        extra: list[tuple[bytes, str]] = []
+        if background is not None:
+            extra.append((background, background_mime or "image/png"))
+            if subject is not None:
+                extra.append((subject, subject_mime or "image/png"))
+        payload = await self._ask_json(
+            image,
+            mime,
+            build_quality_check_prompt(
+                with_background=bool(background is not None),
+                with_subject=len(extra) == 2,
+            ),
+            extra,
+        )
 
         if payload.get("harmful_content") is True:
             return QualityVerdict(False, "HARMFUL_CONTENT", payload)
+        if payload.get("face_matches_subject") is False:
+            return QualityVerdict(False, "FACE_NOT_PRESERVED", payload)
         if payload.get("face_natural") is False:
             return QualityVerdict(False, "FACE_DISTORTED", payload)
+        if payload.get("proportions_human") is False:
+            return QualityVerdict(False, "PROPORTION_ERROR", payload)
         if payload.get("anatomy_correct") is False:
             return QualityVerdict(False, "ANATOMY_ERROR", payload)
+        if payload.get("scene_scale_intact") is False:
+            return QualityVerdict(False, "SCENE_SCALE_BROKEN", payload)
+        if payload.get("background_preserved") is False:
+            return QualityVerdict(False, "BACKGROUND_ALTERED", payload)
         if payload.get("severe_artifacts") is True:
             return QualityVerdict(False, "SEVERE_ARTIFACTS", payload)
 
-        person_count = payload.get("person_count")
+        # 배경 비교판은 '추가된 인물'만 센다. 관광지 사진에는 원래 행인이 찍혀
+        # 있는 경우가 많아서, 전체 인원을 세면 정상 결과가 대량으로 거부된다
+        # (강문해변 배경에는 이미 8명이 있다).
+        person_count = payload.get("added_person_count", payload.get("person_count"))
         if isinstance(person_count, int) and person_count != 1:
             return QualityVerdict(False, "PERSON_COUNT_MISMATCH", payload)
 
         return QualityVerdict(True, None, payload)
 
-    async def _ask_json(self, image: bytes, mime: str, prompt: str) -> dict:
+    async def _ask_json(
+        self,
+        image: bytes,
+        mime: str,
+        prompt: str,
+        extra_images: list[tuple[bytes, str]] | None = None,
+    ) -> dict:
+        parts = [types.Part.from_bytes(data=image, mime_type=mime)]
+        for data, part_mime in extra_images or []:
+            parts.append(types.Part.from_bytes(data=data, mime_type=part_mime))
         try:
             response = await self._client.aio.models.generate_content(
                 model=self.vision_model,
-                contents=[types.Part.from_bytes(data=image, mime_type=mime), prompt],
+                contents=[*parts, prompt],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json", temperature=0.0
                 ),

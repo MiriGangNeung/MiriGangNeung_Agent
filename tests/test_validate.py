@@ -90,6 +90,68 @@ def test_rejects_occluded_face(monkeypatch):
     _expect("FACE_OCCLUDED", make_noise_image_bytes())
 
 
+def _staged_detector(monkeypatch, *stages: list[FaceBox]):
+    """호출 순서대로 다른 결과를 돌려주는 detect_faces 스텁.
+
+    `_crop_to_primary`가 잘라낸 뒤 한 번 더 검출하므로, 원본과 크롭 후를 나눠 준다.
+    """
+    calls = iter(stages)
+    last: list[list[FaceBox]] = [stages[-1]]
+
+    def fake(_matrix):
+        return next(calls, last[0])
+
+    monkeypatch.setattr(validate_module, "detect_faces", fake)
+
+
+def test_crops_to_primary_subject_when_one_face_clearly_dominates(monkeypatch):
+    """뒤에 다른 사람이 걸친 셀피는 거부 대신 주 피사체만 잘라 살린다."""
+    _staged_detector(
+        monkeypatch,
+        [FaceBox(100, 100, 200, 200), FaceBox(120, 400, 90, 90)],
+        [FaceBox(100, 100, 200, 200)],
+    )
+    monkeypatch.setattr(validate_module, "_is_face_occluded", lambda *_: False)
+    original = make_noise_image_bytes(width=640, height=800)
+
+    report = validate_photo(original, "image/png", **LIMITS)
+
+    assert report.cropped_from_group is True
+    assert report.data and report.data != original
+    # 두 번째 얼굴(y=400)을 잘라내려면 아래쪽을 400에서 끊는 것이 손실이 가장 적다.
+    assert report.height == 400
+    assert report.width == 640
+
+
+def test_keeps_rejecting_group_photos_without_a_clear_subject(monkeypatch):
+    """비슷한 크기로 나란히 선 사진은 누가 주인공인지 알 수 없어 그대로 거부한다."""
+    _staged_detector(
+        monkeypatch,
+        [FaceBox(50, 100, 200, 200), FaceBox(350, 100, 190, 190)],
+    )
+    _expect("MULTIPLE_PERSONS", make_noise_image_bytes())
+
+
+def test_rejects_when_faces_overlap_and_cannot_be_separated(monkeypatch):
+    """얼굴이 겹쳐 있으면 어느 방향으로 잘라도 분리되지 않으므로 거부한다."""
+    _staged_detector(
+        monkeypatch,
+        [FaceBox(100, 100, 300, 300), FaceBox(150, 150, 100, 100)],
+    )
+    _expect("MULTIPLE_PERSONS", make_noise_image_bytes())
+
+
+def test_single_face_photo_is_not_cropped(monkeypatch):
+    _staged_detector(monkeypatch, [FaceBox(100, 100, 200, 200)])
+    monkeypatch.setattr(validate_module, "_is_face_occluded", lambda *_: False)
+    original = make_noise_image_bytes()
+
+    report = validate_photo(original, "image/png", **LIMITS)
+
+    assert report.cropped_from_group is False
+    assert report.data == original
+
+
 def test_accepts_sharp_unoccluded_face(monkeypatch):
     monkeypatch.setattr(validate_module, "detect_faces", lambda _: [FaceBox(100, 100, 200, 200)])
     monkeypatch.setattr(validate_module, "_is_face_occluded", lambda *_: False)
