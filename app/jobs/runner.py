@@ -19,9 +19,11 @@ from app.core.config import Settings
 from app.core.errors import SAFETY_ERROR_CODES, AiServiceError
 from app.jobs.store import JobRecord, JobStore
 from app.pipeline import safety, style
-from app.pipeline.compose import compose_with_retry
+from app.pipeline.face_identity import face_ratio
+from app.pipeline.face_reference import build_face_reference
 from app.pipeline.finalize import finalize_image
 from app.pipeline.prompt import build_composition_prompt
+from app.pipeline.regenerate import compose_until_face_matches
 from app.places.backgrounds import has_precomputed_place_context, resolve_place_context
 from app.providers.base import (
     BackgroundAnalysis,
@@ -135,11 +137,31 @@ class GenerationRunner:
             background_analysis=background_analysis,
             background_image_url=record.background_image_url,
         )
+        # 얼굴이 화면에서 작게 찍힌 사진은 합성 모델이 얼굴을 복사하지 못하고
+        # 재구성한다. 그런 사진에는 얼굴만 잘라 확대한 참조를 한 장 더 넘긴다.
+        # 거부 조건이 아니라 "도움을 더 줄까"를 정하는 것이라 임계값은 널널하다.
+        face_reference: bytes | None = None
+        ratio = face_ratio(person_image)
+        if (
+            self.settings.face_reference_enabled
+            and ratio is not None
+            and ratio < self.settings.face_ratio_assist_below
+        ):
+            built = build_face_reference(person_image)
+            if built is not None:
+                face_reference = built[0]
+
         prompt = build_composition_prompt(
-            place, record.aspect_ratio, record.style_tags, record.variation_mode
+            place,
+            record.aspect_ratio,
+            record.style_tags,
+            record.variation_mode,
+            with_face_reference=face_reference is not None,
         )
 
-        output, attempts = await compose_with_retry(
+        # 얼굴 신원이 살아날 때까지 다시 뽑는다. 판정은 로컬 임베딩이라 vision 호출은
+        # 늘지 않는다 (app/pipeline/regenerate.py).
+        regenerated = await compose_until_face_matches(
             self.provider,
             CompositionRequest(
                 person_image=person_image,
@@ -148,12 +170,23 @@ class GenerationRunner:
                 background_mime=background_mime,
                 prompt=prompt,
                 aspect_ratio=record.aspect_ratio,
+                face_reference=face_reference,
             ),
+            reference_image=person_image,
             timeout_seconds=self.settings.provider_timeout_seconds,
             max_retries=self.settings.provider_max_retries,
+            max_attempts=self.settings.face_regenerate_max_attempts,
+            similarity_target=self.settings.face_similarity_target,
+            on_attempt=lambda: self._raise_if_cancelled(record),
         )
+        output = regenerated.output
+        attempts = regenerated.compose_calls
         record.attempts = attempts
-        record.estimated_cost_usd = output.estimated_cost_usd
+        record.face_similarity = regenerated.similarity
+        # 생성 호출이 여러 번이면 비용도 그만큼 든다. 마지막 호출 단가만 쓰면
+        # 단위경제성이 과소 보고된다.
+        if output.estimated_cost_usd is not None:
+            record.estimated_cost_usd = output.estimated_cost_usd * attempts
         self.store.save(record)
         self._raise_if_cancelled(record)
 
@@ -169,7 +202,24 @@ class GenerationRunner:
             person_mime,
         )
         record.safety_status = safety_status
-        record.safety_reason_code = reason
+        # 경고 사유는 결과를 막지 않는다. reasonCode 자리에 남기면 백엔드가 실패로
+        # 오인할 수 있어, 경고 목록에만 싣고 reasonCode는 비워 둔다.
+        warnings: list[tuple[str, str]] = []
+        if reason in safety.WARNING_REASON_CODES:
+            warnings.append(safety.warning_for(reason))
+            record.safety_reason_code = None
+        else:
+            record.safety_reason_code = reason
+
+        # 얼굴 신원 경고는 로컬 유사도로 판단한다. 재생성을 다 쓰고도 이 선에
+        # 못 미칠 때만 사용자를 귀찮게 한다.
+        if (
+            regenerated.similarity is not None
+            and regenerated.similarity < self.settings.face_similarity_warn_below
+        ):
+            warnings.append(safety.warning_for("FACE_NOT_PRESERVED"))
+
+        record.safety_warnings = warnings
         self.store.save(record)
         self._raise_if_cancelled(record)
 

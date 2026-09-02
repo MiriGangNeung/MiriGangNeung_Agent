@@ -322,7 +322,6 @@ python scripts/export_openapi.py --check
 | reasonCode | 뜻 |
 |---|---|
 | `HARMFUL_CONTENT` | 결과에 부적절한 내용이 포함됨 |
-| `FACE_NOT_PRESERVED` | 결과의 얼굴이 업로드한 인물과 다름 — 재시도 안내가 적절하다 |
 | `FACE_DISTORTED` | 얼굴이 뭉개지거나 부자연스럽게 생성됨 |
 | `PROPORTION_ERROR` | 신체 비율이 사람의 것이 아님 (등신·다리 길이) |
 | `ANATOMY_ERROR` | 손발 개수·관절 등 신체 오류, 하체 소실 |
@@ -332,8 +331,36 @@ python scripts/export_openapi.py --check
 | `SEVERE_ARTIFACTS` | 결과 품질이 기준 미달 |
 | `PROVIDER_BLOCKED` | 공급자 자체 안전 필터가 차단 |
 
-> `FACE_NOT_PRESERVED`는 업로드 사진의 얼굴이 작을수록(대략 100px 미만) 발생률이 높다.
-> 프론트에서 업로드 단계에 얼굴 크기 안내를 두면 실패를 줄일 수 있다.
+### 경고 — 결과는 주되 알려야 하는 것 (`safety.warnings`)
+
+**`FACE_NOT_PRESERVED`는 더 이상 Job을 실패시키지 않는다.** 얼굴이 화면에서 작게 찍힌
+사진은 흔한 여행 사진이라, 그걸 이유로 결과를 못 받게 하면 정상 사용자가 대량으로
+막힌다. 대신 결과를 그대로 주고 `safety.warnings`에 실어 보낸다.
+
+```json
+{
+  "status": "DONE",
+  "safety": {
+    "status": "PASSED",
+    "reasonCode": null,
+    "warnings": [
+      { "code": "FACE_NOT_PRESERVED",
+        "message": "얼굴이 실제 모습과 조금 다르게 표현됐을 수 있습니다. 마음에 들지 않으면 다시 만들어 보세요." }
+    ]
+  }
+}
+```
+
+- `warnings`는 **선택 필드**다. 무시해도 기존 연동은 그대로 동작한다.
+- 경고가 있어도 `status`는 `PASSED`, Job은 `DONE`이고 결과 이미지가 나온다.
+  `reasonCode`는 `null`이다 — 여기 값이 있으면 실패로 오인되기 때문이다.
+- 어떤 코드가 경고이고 어떤 코드가 거부인지는 `GET /v1/meta`의 `safetyReasonCodes[].severity`
+  (`warn` | `reject`)로 알 수 있다.
+- **프론트 권장**: 경고를 노출하고 다시 만들기 버튼을 함께 보여준다.
+
+서버는 이 경고를 내기 전에 이미 최대 `faceRegenerateMaxAttempts`(`GET /v1/meta`, 기본 3)
+번까지 다시 합성해 본다. 그래서 한 Job이 평균 45초 안팎, 최악의 경우 그보다 길어질 수
+있으니 **백엔드 폴링 타임아웃을 이 값에 맞춰 잡아야 한다.**
 
 ## 개인정보 처리
 

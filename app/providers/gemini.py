@@ -77,11 +77,23 @@ class GeminiProvider(ImageCompositionProvider):
 
     # ── 합성 (E1~E4) ────────────────────────────────────────
     async def compose(self, request: CompositionRequest) -> CompositionOutput:
-        contents = [
+        # 순서가 곧 프롬프트가 부르는 이름이다:
+        # [subject image] / [face reference] / [background image].
+        parts = [
             types.Part.from_bytes(data=request.person_image, mime_type=request.person_mime),
-            types.Part.from_bytes(data=request.background_image, mime_type=request.background_mime),
-            request.prompt,
         ]
+        if request.face_reference is not None:
+            parts.append(
+                types.Part.from_bytes(
+                    data=request.face_reference, mime_type=request.face_reference_mime
+                )
+            )
+        parts.append(
+            types.Part.from_bytes(
+                data=request.background_image, mime_type=request.background_mime
+            )
+        )
+        contents = [*parts, request.prompt]
         config = types.GenerateContentConfig(
             response_modalities=["IMAGE"],
             image_config=types.ImageConfig(aspect_ratio=request.aspect_ratio.value),
@@ -171,8 +183,11 @@ class GeminiProvider(ImageCompositionProvider):
 
         if payload.get("harmful_content") is True:
             return QualityVerdict(False, "HARMFUL_CONTENT", payload)
-        if payload.get("face_matches_subject") is False:
-            return QualityVerdict(False, "FACE_NOT_PRESERVED", payload)
+        # `face_matches_subject`는 판정에 쓰지 않고 payload에만 남긴다.
+        # 실측(2026-09-02): 로컬 SFace 점수가 0.587·0.590인 결과 — 사람 눈으로 확인한
+        # '같은 사람' 기준(0.549)보다 높은 것 — 에도 이 필드가 false를 돌려줬다. 5건
+        # 전부 같은 문구였다. 이 프로젝트에서 반복 확인된 'VLM의 판정성 필드는 거의
+        # 상수'라는 패턴이라, 신원 판정은 app/pipeline/face_identity.py가 맡는다.
         if payload.get("face_natural") is False:
             return QualityVerdict(False, "FACE_DISTORTED", payload)
         if payload.get("proportions_human") is False:
