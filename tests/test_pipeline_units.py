@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import pathlib
 
 import pytest
 from PIL import Image
@@ -11,7 +12,7 @@ from app.core.errors import AiServiceError
 from app.pipeline.compose import compose_with_retry
 from app.pipeline.finalize import AI_DISCLOSURE, finalize_image
 from app.pipeline.prompt import build_composition_prompt
-from app.pipeline.safety import check_output
+from app.pipeline.safety import check_output, warning_for
 from app.places.backgrounds import (
     PlaceContext,
     get_dev_place,
@@ -132,12 +133,9 @@ async def test_safety_forwards_subject_photo_for_face_comparison():
     assert provider.seen_subject == b"subject"
 
 
-@pytest.mark.parametrize(
-    "reason_code",
-    ["FACE_NOT_PRESERVED", "PROPORTION_ERROR", "SCENE_SCALE_BROKEN"],
-)
+@pytest.mark.parametrize("reason_code", ["PROPORTION_ERROR", "SCENE_SCALE_BROKEN"])
 async def test_safety_rejects_new_v3_failures(reason_code: str):
-    """v3 검사판이 새로 잡는 세 가지도 재시도 없이 거부돼야 한다."""
+    """v3 검사판이 새로 잡는 것들은 재시도 없이 거부돼야 한다."""
     provider = _StubProvider(QualityVerdict(False, reason_code))
 
     with pytest.raises(AiServiceError) as excinfo:
@@ -147,6 +145,28 @@ async def test_safety_rejects_new_v3_failures(reason_code: str):
     assert excinfo.value.retryable is False
     # 사용자에게 보일 문구가 사유별로 준비돼 있어야 한다.
     assert "기준을 통과하지 못했습니다" not in excinfo.value.message
+
+
+async def test_face_mismatch_is_a_warning_not_a_rejection():
+    """얼굴이 달라도 결과는 준다.
+
+    얼굴이 화면에서 작게 찍힌 사진은 흔한 여행 사진이라, 그걸 이유로 결과를 아예
+    막으면 정상 사용자가 대량으로 거부된다. 경고만 달고 통과시킨다.
+    """
+    provider = _StubProvider(QualityVerdict(False, "FACE_NOT_PRESERVED"))
+
+    status, reason = await check_output(
+        provider, b"x", "image/png", b"bg", "image/png", b"subj", "image/png"
+    )
+
+    assert status is SafetyStatus.PASSED
+    assert reason == "FACE_NOT_PRESERVED"
+
+    code, message = warning_for(reason)
+    assert code == "FACE_NOT_PRESERVED"
+    # 결과를 받은 사용자에게 "제공할 수 없습니다"라고 하면 앞뒤가 맞지 않는다.
+    assert "제공할 수 없습니다" not in message
+    assert "다시 만들어 보세요" in message
 
 
 async def test_safety_rejects_altered_background():
@@ -437,3 +457,146 @@ def test_outfit_guide_matches_place_absent_from_survey_by_scene_keywords():
     assert get_outfit_scene_type(None, "박물관 외관과 전시실").id == "museum"
     # 장소명이 문서에 있으면 키워드보다 우선한다.
     assert get_outfit_scene_type("안반데기", "모래사장").id == "highland"
+
+
+# ── 얼굴 신원 보존 (regenerate.py, face_identity.py) ──────────
+
+
+class _ScriptedProvider(ImageCompositionProvider):
+    """정해진 순서로 결과를 돌려주고 호출 횟수를 센다."""
+
+    name = "scripted"
+    image_model = "scripted-image"
+    vision_model = "scripted-vision"
+
+    def __init__(self, images: list[bytes]):
+        self._images = list(images)
+        self.compose_calls = 0
+        self.quality_calls = 0
+
+    async def compose(self, request):
+        self.compose_calls += 1
+        index = min(self.compose_calls - 1, len(self._images) - 1)
+        return CompositionOutput(image=self._images[index], estimated_cost_usd=0.1)
+
+    async def analyze_style(self, image, mime):  # pragma: no cover
+        return []
+
+    async def analyze_background(self, image, mime):  # pragma: no cover
+        return BackgroundAnalysis()
+
+    async def check_quality(
+        self, image, mime, background=None, background_mime=None, subject=None, subject_mime=None
+    ):
+        self.quality_calls += 1
+        return QualityVerdict(True)
+
+
+async def _regenerate(provider, scores, *, target=0.45, max_attempts=3, monkeypatch=None):
+    from app.pipeline import regenerate
+
+    calls = iter(scores)
+    monkeypatch.setattr(regenerate, "face_similarity", lambda ref, cand: next(calls))
+    return await regenerate.compose_until_face_matches(
+        provider,
+        _request(),
+        reference_image=b"subject",
+        timeout_seconds=5.0,
+        max_retries=0,
+        max_attempts=max_attempts,
+        similarity_target=target,
+    )
+
+
+async def test_regeneration_stops_as_soon_as_the_face_matches(monkeypatch):
+    provider = _ScriptedProvider([b"a", b"b", b"c"])
+
+    result = await _regenerate(provider, [0.20, 0.80], monkeypatch=monkeypatch)
+
+    assert provider.compose_calls == 2
+    assert result.output.image == b"b"
+    assert result.similarity == 0.80
+
+
+async def test_regeneration_returns_the_best_candidate_when_it_never_reaches_target(monkeypatch):
+    """상한을 다 써도 예외를 던지지 않고 가장 닮은 결과를 준다.
+
+    사용자에게 결과는 반드시 준다는 것이 정책이다 — 얼굴이 달라도 경고만 단다.
+    """
+    provider = _ScriptedProvider([b"a", b"b", b"c"])
+
+    result = await _regenerate(provider, [0.20, 0.41, 0.11], monkeypatch=monkeypatch)
+
+    assert provider.compose_calls == 3
+    assert result.output.image == b"b"  # 최고점
+    assert result.similarity == 0.41
+
+
+async def test_regeneration_does_not_add_vision_calls(monkeypatch):
+    """재생성이 늘리는 것은 이미지 생성뿐이다.
+
+    시도마다 품질 검사를 부르면 작업 시간이 N배가 되어 실서비스에 쓸 수 없다.
+    """
+    provider = _ScriptedProvider([b"a", b"b", b"c"])
+
+    await _regenerate(provider, [0.10, 0.10, 0.10], monkeypatch=monkeypatch)
+
+    assert provider.compose_calls == 3
+    assert provider.quality_calls == 0
+
+
+async def test_regeneration_gives_up_judging_when_no_face_is_found(monkeypatch):
+    """유사도가 None이면 '다른 사람'이 아니라 '판정 불가'다. 재생성하지 않는다."""
+    provider = _ScriptedProvider([b"a", b"b"])
+
+    result = await _regenerate(provider, [None], monkeypatch=monkeypatch)
+
+    assert provider.compose_calls == 1
+    assert result.similarity is None
+
+
+def test_face_ratio_is_relative_not_absolute():
+    """같은 사진을 확대해도 얼굴 비율은 그대로여야 한다.
+
+    절대 픽셀로 판단하면 고해상도 전신샷이 '얼굴이 크다'고 잘못 분류된다.
+    """
+    from app.pipeline.face_identity import face_ratio
+
+    original = pathlib.Path("woman1.jpg")
+    if not original.is_file():
+        pytest.skip("인물 사진이 로컬에만 있어 CI에서는 건너뛴다")
+
+    data = original.read_bytes()
+    with Image.open(io.BytesIO(data)) as image:
+        doubled = io.BytesIO()
+        image.convert("RGB").resize((image.width * 2, image.height * 2)).save(doubled, format="PNG")
+
+    base = face_ratio(data)
+    scaled = face_ratio(doubled.getvalue())
+
+    assert base is not None and scaled is not None
+    assert abs(base - scaled) < 0.03
+
+
+def test_face_similarity_is_none_without_a_recognition_model(monkeypatch):
+    """인식 모델이 없으면 판정을 건너뛴다 — YuNet→Haar 폴백과 같은 원칙."""
+    from app.pipeline import face_identity
+
+    face_identity._recognizer.cache_clear()
+    monkeypatch.setattr(face_identity, "_recognizer", lambda: None)
+
+    assert face_identity.face_similarity(b"a", b"b") is None
+
+
+def test_gemini_no_longer_gates_on_the_vision_face_judgment():
+    """`face_matches_subject`는 판정에 쓰지 않고 관측 필드로만 남는다.
+
+    실측에서 이 필드가 SFace 0.587/0.590짜리 결과에도 false를 돌려줬다 — 사람 눈으로
+    확인한 '같은 사람' 기준보다 높은 값이다. 신원 판정은 로컬 임베딩이 맡는다.
+    """
+    import inspect
+
+    from app.providers import gemini
+
+    source = inspect.getsource(gemini.GeminiProvider.check_quality)
+    assert "FACE_NOT_PRESERVED" not in source

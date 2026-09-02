@@ -23,6 +23,7 @@ from app.schemas.generation import (
     JobStatus,
     SafetyReport,
     SafetyStatus,
+    SafetyWarning,
     StyleTag,
     VariationMode,
 )
@@ -69,6 +70,10 @@ class JobRecord(BaseModel):
 
     safety_status: SafetyStatus = SafetyStatus.UNKNOWN
     safety_reason_code: str | None = None
+    # (코드, 문구) 쌍. 결과를 막지 않고 프론트에 전달만 하는 품질 경고.
+    safety_warnings: list[tuple[str, str]] = Field(default_factory=list)
+    # 채택한 결과의 얼굴 신원 유사도 (SFace 코사인). 판정 불가면 None. 관측·보정용.
+    face_similarity: float | None = None
 
     error_code: str | None = None
     error_message: str | None = None
@@ -117,7 +122,11 @@ class JobRecord(BaseModel):
             stage=STAGE_LABELS[self.status],
             progress=self.status.progress,
             result=result,
-            safety=SafetyReport(status=self.safety_status, reasonCode=self.safety_reason_code),
+            safety=SafetyReport(
+                status=self.safety_status,
+                reasonCode=self.safety_reason_code,
+                warnings=[SafetyWarning(code=c, message=m) for c, m in self.safety_warnings],
+            ),
             error=error,
             metadata=GenerationMetadata(
                 provider=self.provider,

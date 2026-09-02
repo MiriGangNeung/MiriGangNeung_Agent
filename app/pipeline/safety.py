@@ -21,6 +21,28 @@ from app.schemas.generation import SafetyStatus
 logger = logging.getLogger(__name__)
 
 
+# 결과를 막지 않고 경고로만 전달하는 사유.
+#
+# `FACE_NOT_PRESERVED`가 여기 있는 이유: 얼굴이 화면에서 작게 찍힌 사진은 흔한 여행
+# 사진인데, 그걸 이유로 결과를 아예 못 받게 하면 정상 사용자가 대량으로 막힌다.
+# 얼굴이 조금 다를 수 있다고 알려주고 다시 만들 기회를 주는 편이 낫다.
+WARNING_REASON_CODES = frozenset({"FACE_NOT_PRESERVED"})
+
+# 경고로 나갈 때 쓰는 문구. 거부 문구("제공할 수 없습니다")를 그대로 쓰면 결과를 받은
+# 사용자에게 앞뒤가 맞지 않는다.
+WARNING_MESSAGES: dict[str, str] = {
+    "FACE_NOT_PRESERVED": (
+        "얼굴이 실제 모습과 조금 다르게 표현됐을 수 있습니다. "
+        "마음에 들지 않으면 다시 만들어 보세요."
+    ),
+}
+
+
+def warning_for(reason_code: str) -> tuple[str, str]:
+    """(코드, 사용자 문구). 경고 사유가 아니면 호출하지 않는다."""
+    return reason_code, WARNING_MESSAGES.get(reason_code, DEFAULT_REASON_MESSAGE)
+
+
 async def check_output(
     provider: ImageCompositionProvider,
     image: bytes,
@@ -45,6 +67,11 @@ async def check_output(
 
     if verdict.passed:
         return SafetyStatus.PASSED, None
+
+    if verdict.reason_code in WARNING_REASON_CODES:
+        # 거부가 아니라 경고다. 결과는 그대로 제공하고 호출부가 경고를 싣는다.
+        logger.info("생성 결과에 품질 경고를 답니다 (reason=%s).", verdict.reason_code)
+        return SafetyStatus.PASSED, verdict.reason_code
 
     logger.info("생성 결과가 품질·안전성 검사에서 거부됐습니다 (reason=%s).", verdict.reason_code)
     raise AiServiceError(

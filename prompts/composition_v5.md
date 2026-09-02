@@ -25,9 +25,9 @@ inputs: [person_image, background_image, place_name, scene_hint, lighting_hint, 
   outfit_direction]
 ---
 
-You are given TWO input images:
+You are given these input images, in order:
 - [subject image]: an uploaded photo of a real user (the person).
-- [background image]: a real tourist-site photo of {place_name} in Gangneung, South Korea, fetched from a URL.
+{face_reference_note}- [background image]: a real tourist-site photo of {place_name} in Gangneung, South Korea, fetched from a URL.
 
 Background: {scene_hint} {lighting_hint}
 
@@ -208,6 +208,8 @@ in the scene obeys the head-height ratios above whatever pose it takes.
 {variation_direction}
 
 ## Identity — the face (most critical rule in this prompt)
+
+{face_reference_direction}
 
 **The face is the deliverable.** This photo is made so one specific person can
 see themselves somewhere in Gangneung. A beautiful result with someone else's

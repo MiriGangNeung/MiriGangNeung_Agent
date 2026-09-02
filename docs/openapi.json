@@ -398,6 +398,11 @@
             "title": "Errorcodes",
             "type": "array"
           },
+          "faceRegenerateMaxAttempts": {
+            "default": 1,
+            "title": "Faceregeneratemaxattempts",
+            "type": "integer"
+          },
           "imageModel": {
             "title": "Imagemodel",
             "type": "string"
@@ -452,7 +457,7 @@
         "type": "object"
       },
       "SafetyReasonSpec": {
-        "description": "`safety.reasonCode` 하나와 사용자에게 보일 문구.",
+        "description": "`safety.reasonCode` 하나와 사용자에게 보일 문구.\n\n`severity`가 `warn`이면 결과를 막지 않고 `safety.warnings`로만 전달된다.\n`reject`면 Job이 `SAFETY_REJECTED_OUTPUT`으로 실패한다.",
         "properties": {
           "code": {
             "title": "Code",
@@ -460,6 +465,11 @@
           },
           "message": {
             "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "default": "reject",
+            "title": "Severity",
             "type": "string"
           }
         },
@@ -486,6 +496,13 @@
           "status": {
             "$ref": "#/components/schemas/SafetyStatus",
             "default": "UNKNOWN"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SafetyWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "title": "SafetyReport",
@@ -499,6 +516,25 @@
         ],
         "title": "SafetyStatus",
         "type": "string"
+      },
+      "SafetyWarning": {
+        "description": "결과를 막지는 않지만 사용자에게 알려야 하는 품질 문제.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "SafetyWarning",
+        "type": "object"
       },
       "StyleTag": {
         "description": "요구사항 B6: 태그 + 신뢰도 점수.",
