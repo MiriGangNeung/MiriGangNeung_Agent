@@ -1,0 +1,95 @@
+{
+  "_comment": [
+    "이 파일은 AI_PROVIDER=mock 로컬 개발과 curl 수동 테스트 전용이다.",
+    "아래 id 값(예: anmok-beach)은 임의로 붙인 슬러그이며 백엔드의 실제 Place.id",
+    "(UUID, MiriGangNeung_BackEnd 07_DATA_MODEL.md 기준)와 아무 관계가 없다.",
+    "운영에서 이 카탈로그로 매칭되는 일은 없다 — 실제 배경은 백엔드가",
+    "POST /v1/generations 의 background 필드로 보내야 한다 (docs/AI_API_CONTRACT.md).",
+    "요구사항 C3: 이미지별 출처/제공기관/저작권/사용 가능 여부/출처 표기 문구를 모른 채",
+    "usable=true로 두지 않는다. license/source/attribution이 TBD인 동안은 항상",
+    "usable=false로 고정한다 — 실제 jpg 파일을 넣더라도 라이선스를 확인하기 전에는",
+    "true로 바꾸지 않는다.",
+    "file 이 비어 있거나 실제 파일이 없으면(현재 전부 그렇다) 개발용 그라디언트",
+    "플레이스홀더가 대신 쓰인다. 실제 이미지 파일은 .gitignore로 커밋에서 제외된다."
+  ],
+  "places": [
+    {
+      "id": "anmok-beach",
+      "name": "안목해변",
+      "region": "강원특별자치도 강릉시",
+      "file": "anmok-beach.jpg",
+      "sceneHint": "동해 바다와 백사장이 펼쳐진 해변, 커피거리 건물이 멀리 보이고 수평선이 낮게 걸린 구도",
+      "lightingHint": "맑은 낮의 강한 자연광, 바다에서 반사되는 밝은 빛",
+      "usable": false,
+      "source": "TBD",
+      "provider": "TBD",
+      "license": "TBD",
+      "attribution": "TBD"
+    },
+    {
+      "id": "arte-museum",
+      "name": "아르떼뮤지엄 강릉",
+      "region": "강원특별자치도 강릉시",
+      "file": "arte-museum.jpg",
+      "sceneHint": "대형 미디어아트 전시 공간, 벽과 바닥까지 이어지는 몰입형 영상 프로젝션",
+      "lightingHint": "어두운 실내에 컬러 프로젝션 조명, 인물 얼굴에 은은한 컬러 반사광",
+      "usable": false,
+      "source": "TBD",
+      "provider": "TBD",
+      "license": "TBD",
+      "attribution": "TBD"
+    },
+    {
+      "id": "chodang-tofu-village",
+      "name": "초당순두부마을",
+      "region": "강원특별자치도 강릉시",
+      "file": "chodang-tofu-village.jpg",
+      "sceneHint": "소나무가 늘어선 한적한 마을 골목과 전통 한옥풍 식당 거리",
+      "lightingHint": "부드러운 오후 햇살, 나뭇잎 사이로 떨어지는 얼룩진 그림자",
+      "usable": false,
+      "source": "TBD",
+      "provider": "TBD",
+      "license": "TBD",
+      "attribution": "TBD"
+    },
+    {
+      "id": "gyeongpo-lake",
+      "name": "경포호",
+      "region": "강원특별자치도 강릉시",
+      "file": "gyeongpo-lake.jpg",
+      "sceneHint": "잔잔한 호수와 호수를 두른 산책로, 물에 비친 하늘",
+      "lightingHint": "노을 무렵의 따뜻한 역광, 낮은 각도의 황금빛",
+      "usable": false,
+      "source": "TBD",
+      "provider": "TBD",
+      "license": "TBD",
+      "attribution": "TBD"
+    },
+    {
+      "id": "jumunjin-breakwater",
+      "name": "주문진 방파제",
+      "region": "강원특별자치도 강릉시",
+      "file": "jumunjin-breakwater.jpg",
+      "sceneHint": "테트라포드가 늘어선 방파제와 푸른 바다, 멀리 등대",
+      "lightingHint": "맑은 하늘의 직사광, 바닷바람에 흔들리는 느낌",
+      "usable": false,
+      "source": "TBD",
+      "provider": "TBD",
+      "license": "TBD",
+      "attribution": "TBD"
+    },
+    {
+      "id": "ojukheon",
+      "name": "오죽헌",
+      "region": "강원특별자치도 강릉시",
+      "file": "ojukheon.jpg",
+      "sceneHint": "검은 대나무 숲과 조선시대 한옥 건축, 기와 지붕과 마당",
+      "lightingHint": "대나무 그늘이 드리운 차분한 확산광",
+      "usable": false,
+      "source": "TBD",
+      "provider": "TBD",
+      "license": "TBD",
+      "attribution": "TBD"
+    }
+  ]
+}

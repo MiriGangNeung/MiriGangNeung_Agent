@@ -1,0 +1,30 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ai:
+    build: .
+    env_file:
+      - .env
+    environment:
+      # compose 안에서는 항상 redis 서비스를 바라본다 (.env의 REDIS_HOST를 덮어쓴다)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      IMAGE_TEMP_DIR: /data/images
+    ports:
+      - "${AI_PORT:-8100}:8100"
+    volumes:
+      - ai-images:/data/images
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  ai-images:
