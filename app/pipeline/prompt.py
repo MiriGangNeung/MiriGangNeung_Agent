@@ -40,6 +40,7 @@ def build_composition_prompt(
     aspect_ratio: AspectRatio,
     style_tags: list[StyleTag],
     variation_mode: VariationMode = VariationMode.SAME,
+    with_face_reference: bool = False,
 ) -> str:
     template = load_template(COMPOSITION_TEMPLATE)
     occluding = place.occluding_elements or "nothing"
@@ -69,6 +70,11 @@ def build_composition_prompt(
         .replace("{occluding_elements}", occluding)
         .replace("{outfit_direction}", place.outfit_direction or _DEFAULT_OUTFIT)
         .replace("{outfit_negative}", place.outfit_negative)
+        .replace("{face_reference_note}", _FACE_REF_NOTE if with_face_reference else "")
+        .replace(
+            "{face_reference_direction}",
+            _FACE_REF_DIRECTION if with_face_reference else _NO_FACE_REF_DIRECTION,
+        )
         .replace("{mood_tags}", place.mood_tags)
         .replace("{color_palette}", place.color_palette)
         .replace("{style_direction}", _style_direction(style_tags))
@@ -105,6 +111,31 @@ def build_quality_check_prompt(
 _DEFAULT_OUTFIT = (
     "이 장소에 대한 별도 의상 지침은 없다. 첨부 인물 사진의 상의·하의·신발·"
     "가방·안경을 그대로 유지하고, 원본에 없던 옷을 새로 지어내지 않는다."
+)
+
+# 얼굴 참조 이미지를 함께 넘길 때만 프롬프트에 들어가는 문구.
+#
+# 이미지가 두 장에서 세 장으로 늘어나면 "TWO input images"라는 첫 문장부터
+# 거짓이 되고, 모델이 배경을 두 번째 이미지로 찾다가 얼굴 클로즈업을 배경으로
+# 오인한다. 그래서 목록과 지시를 함께 바꾼다.
+_FACE_REF_NOTE = (
+    "- [face reference]: a close-up crop of the SAME person's face, enlarged from "
+    "[subject image]. It is a reference for facial features only — it is not a "
+    "second person, and it is not the background.\n"
+)
+
+_FACE_REF_DIRECTION = (
+    "**Read the face from [face reference].** It is the same person as [subject "
+    "image], cropped and enlarged so their features are actually legible. Copy the "
+    "features from it — that is what it is for. Take the pose, body, clothing and "
+    "framing from [subject image] as directed elsewhere; take only the face from "
+    "[face reference]. Do not paste the close-up itself into the scene, do not "
+    "render it at its enlarged scale, and do not add a second person."
+)
+
+_NO_FACE_REF_DIRECTION = (
+    "The face in [subject image] may be small. Study it closely before drawing, "
+    "and reproduce what is actually there rather than filling in a plausible face."
 )
 
 # 팀 조사 지침이 인물 크기·구도를 이미 지정했는지 판별하는 표현들.

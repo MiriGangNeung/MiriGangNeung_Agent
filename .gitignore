@@ -44,3 +44,8 @@ test_results/
 # 배경 후보 페이지 — 썸네일을 base64로 내장해 1.6MB다. 아티팩트로 게시돼 있고
 # scripts 로 언제든 다시 만들 수 있어 추적하지 않는다.
 강릉_배경_후보.html
+
+# 얼굴 인식 모델(SFace, 38MB)은 커밋하지 않는다. YuNet(232KB)과 달리 클론마다
+# 부담이 커서 scripts/download_models.sh 로 받는다. 없어도 서비스는 동작한다
+# (신원 유사도 판정만 생략된다).
+models/face_recognition_sface_2021dec.onnx

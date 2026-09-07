@@ -20,6 +20,11 @@ class CompositionRequest:
     background_mime: str
     prompt: str
     aspect_ratio: AspectRatio
+    # 업로드 사진에서 얼굴만 잘라 확대한 참조 이미지 (선택).
+    # 얼굴이 작게 찍힌 사진에서 합성 모델이 얼굴을 재구성해 다른 사람이 되는 것을
+    # 막기 위한 보조 입력이다. 없으면 기존과 동일하게 두 장만 넘긴다.
+    face_reference: bytes | None = None
+    face_reference_mime: str = "image/png"
 
 
 @dataclass

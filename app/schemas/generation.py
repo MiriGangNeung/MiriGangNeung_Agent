@@ -110,9 +110,19 @@ class GenerationResult(BaseModel):
     aspectRatio: AspectRatio
 
 
+class SafetyWarning(BaseModel):
+    """결과를 막지는 않지만 사용자에게 알려야 하는 품질 문제."""
+
+    code: str
+    message: str
+
+
 class SafetyReport(BaseModel):
     status: SafetyStatus = SafetyStatus.UNKNOWN
     reasonCode: str | None = None
+    # 결과는 정상 제공하되 프론트가 사용자에게 알려야 하는 것들. 선택 필드라
+    # 기존 백엔드 연동은 이 값을 무시해도 그대로 동작한다.
+    warnings: list[SafetyWarning] = Field(default_factory=list)
 
 
 class ErrorPayload(BaseModel):
@@ -158,10 +168,15 @@ class ErrorCodeSpec(BaseModel):
 
 
 class SafetyReasonSpec(BaseModel):
-    """`safety.reasonCode` 하나와 사용자에게 보일 문구."""
+    """`safety.reasonCode` 하나와 사용자에게 보일 문구.
+
+    `severity`가 `warn`이면 결과를 막지 않고 `safety.warnings`로만 전달된다.
+    `reject`면 Job이 `SAFETY_REJECTED_OUTPUT`으로 실패한다.
+    """
 
     code: str
     message: str
+    severity: str = "reject"
 
 
 class MetaResponse(BaseModel):
@@ -177,6 +192,9 @@ class MetaResponse(BaseModel):
     # 캐시하면 된다.
     errorCodes: list[ErrorCodeSpec]
     safetyReasonCodes: list[SafetyReasonSpec]
+    # 얼굴 신원이 살아날 때까지 합성을 다시 시도하는 최대 횟수. 백엔드가 폴링
+    # 타임아웃을 잡을 때 쓴다 — 이 값이 크면 한 Job이 그만큼 오래 걸린다.
+    faceRegenerateMaxAttempts: int = 1
 
 
 class HealthResponse(BaseModel):
