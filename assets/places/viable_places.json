@@ -1,0 +1,206 @@
+{
+  "_source": "assets/places/place_insights.json",
+  "_note": "scripts/export_place_filter.py 가 생성한다. 직접 고치지 말 것.",
+  "generatedAt": "2026-09-09T04:23:19.644412+00:00",
+  "rules": [
+    "portraitViability != \"low\"",
+    "camera.perspective != \"high-angle\" (드론 항공샷 제외)",
+    "placement.standableSurface 가 비어 있지 않을 것"
+  ],
+  "placeCount": 23,
+  "usableImageCount": 54,
+  "places": [
+    {
+      "placeName": "강문해변",
+      "usableImageCount": 5,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/30/3388830.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/65/3388865.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/64/3388864.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/63/3388863.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/62/3388862.jpg"
+      ]
+    },
+    {
+      "placeName": "강릉 경포대",
+      "usableImageCount": 4,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms/resource/52/3501452_image2_1.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/66/2825566.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/68/2825568.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/69/2825569.jpg"
+      ]
+    },
+    {
+      "placeName": "경포해수욕장",
+      "usableImageCount": 4,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms/resource/25/4075925_image2_1.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/25/2531225.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/24/2531224.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/23/2531223.jpg"
+      ]
+    },
+    {
+      "placeName": "안목해변",
+      "usableImageCount": 4,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/64/1188164.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/78/1188278.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/61/1188261.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/41/1188241.jpg"
+      ]
+    },
+    {
+      "placeName": "향호해변",
+      "usableImageCount": 4,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/46/2792146.jpeg",
+        "https://tong.visitkorea.or.kr/cms2/website/24/2828824.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/25/2828825.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/26/2828826.jpg"
+      ]
+    },
+    {
+      "placeName": "허난설헌 생가터",
+      "usableImageCount": 4,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/97/2473697.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/94/2473694.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/92/2473692.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/89/2473689.jpg"
+      ]
+    },
+    {
+      "placeName": "강릉 솔향수목원",
+      "usableImageCount": 3,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms/resource/27/4058927_image2_1.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/08/2435008.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/95/2435095.jpg"
+      ]
+    },
+    {
+      "placeName": "정동심곡 바다부채길",
+      "usableImageCount": 3,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/31/3542431.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/30/3542430.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/29/3542429.jpg"
+      ]
+    },
+    {
+      "placeName": "정동진",
+      "usableImageCount": 3,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/75/2620375.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/91/2361191.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/90/2361190.jpg"
+      ]
+    },
+    {
+      "placeName": "강릉항",
+      "usableImageCount": 2,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/97/1188097.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/74/1188074.jpg"
+      ]
+    },
+    {
+      "placeName": "경포가시연습지",
+      "usableImageCount": 2,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms/resource/19/3492919_image2_1.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/11/3567811.jpg"
+      ]
+    },
+    {
+      "placeName": "국립대관령치유의숲",
+      "usableImageCount": 2,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/75/2775675.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/68/2775668.jpg"
+      ]
+    },
+    {
+      "placeName": "안반데기",
+      "usableImageCount": 2,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms/resource/57/3537657_image2_1.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/72/2775772.jpg"
+      ]
+    },
+    {
+      "placeName": "임당동 성당",
+      "usableImageCount": 2,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/11/2828211.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/12/2828212.jpg"
+      ]
+    },
+    {
+      "placeName": "주문진 등대",
+      "usableImageCount": 2,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/03/2828703.jpg",
+        "https://tong.visitkorea.or.kr/cms2/website/04/2828704.jpg"
+      ]
+    },
+    {
+      "placeName": "강릉 월화거리",
+      "usableImageCount": 1,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/62/2791962.jpeg"
+      ]
+    },
+    {
+      "placeName": "구룡폭포(소금강)",
+      "usableImageCount": 1,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/77/1127677.jpg"
+      ]
+    },
+    {
+      "placeName": "대관령박물관",
+      "usableImageCount": 1,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/57/1843457.jpg"
+      ]
+    },
+    {
+      "placeName": "솔바람다리",
+      "usableImageCount": 1,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/00/2828500.jpg"
+      ]
+    },
+    {
+      "placeName": "송정해변",
+      "usableImageCount": 1,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/38/1691538.jpg"
+      ]
+    },
+    {
+      "placeName": "영진해변",
+      "usableImageCount": 1,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/04/2828604.jpg"
+      ]
+    },
+    {
+      "placeName": "정동진시간박물관",
+      "usableImageCount": 1,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms/resource/90/3527790_image2_1.jpg"
+      ]
+    },
+    {
+      "placeName": "정동진해변",
+      "usableImageCount": 1,
+      "usableImageUrls": [
+        "https://tong.visitkorea.or.kr/cms2/website/01/2943701.jpg"
+      ]
+    }
+  ]
+}

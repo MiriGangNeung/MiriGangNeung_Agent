@@ -68,7 +68,7 @@ def test_meta_reports_supported_aspect_ratios(client):
     payload = client.get("/v1/meta").json()
 
     assert payload["supportedAspectRatios"] == ["1:1", "4:5", "9:16"]
-    assert payload["promptVersion"] == "v5"
+    assert payload["promptVersion"] == "v6"
     assert payload["provider"] == "mock"
 
 
@@ -116,7 +116,7 @@ def test_full_generation_roundtrip(client):
     assert body["coarseStatus"] == "RUNNING"
     assert body["progress"] == 0
     assert body["metadata"]["onePickPlaceId"] == "anmok-beach"
-    assert body["metadata"]["promptVersion"] == "v5"
+    assert body["metadata"]["promptVersion"] == "v6"
     # 검토 총평 §2-7: 생성 완료 전, 요청 접수 시점에 이미 근사 비용이 채워져 있어야 한다.
     assert body["metadata"]["estimatedCostUsd"] == 0.0
 

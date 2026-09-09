@@ -140,7 +140,7 @@ Base path: `/v1` (헬스체크만 예외로 루트의 `/health`)
   "metadata": {
     "provider": "gemini",
     "model": "gemini-3.1-flash-image",
-    "promptVersion": "v5",
+    "promptVersion": "v6",
     "onePickPlaceId": "9c1d4f2e-58a1-4b3a-9d2e-1f6a2b7c9d10",
     "createdAt": "2026-08-08T12:00:00+00:00",
     "completedAt": null,
@@ -156,7 +156,7 @@ Base path: `/v1` (헬스체크만 예외로 루트의 `/health`)
 §2-7) — 정확한 정산이 아니라 단위경제성 추적용 근사치다. `AI_PROVIDER=mock`이면 `0.0`.
 합성이 끝나면 공급자가 실제로 돌려준 값으로 다시 채워진다(보통 같은 값).
 
-`promptVersion`이 `v5`(2026-08-31~)다. **API 필드는 바뀌지 않는다** — 프론트·백엔드가
+`promptVersion`이 `v6`(2026-09-09~)다. **API 필드는 바뀌지 않는다** — 프론트·백엔드가
 고칠 것은 없고, 달라지는 것은 결과물의 성격과 거부 사유의 종류다.
 
 - v3~v4: 포즈·표정을 장면에 맞게 재조정하고, 조명을 배경 사진에서 직접 읽어 맞춘다.
@@ -195,7 +195,7 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
   "metadata": {
     "provider": "gemini",
     "model": "gemini-3.1-flash-image",
-    "promptVersion": "v5",
+    "promptVersion": "v6",
     "onePickPlaceId": "9c1d4f2e-58a1-4b3a-9d2e-1f6a2b7c9d10",
     "createdAt": "2026-08-08T12:00:00+00:00",
     "completedAt": "2026-08-08T12:00:24+00:00",
@@ -238,7 +238,7 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
   "provider": "gemini",
   "imageModel": "gemini-3.1-flash-image",
   "visionModel": "gemini-3.1-flash-lite",
-  "promptVersion": "v5",
+  "promptVersion": "v6",
   "supportedAspectRatios": ["1:1", "4:5", "9:16"],
   "maxUploadBytes": 10485760,
   "resultTtlSeconds": 86400,

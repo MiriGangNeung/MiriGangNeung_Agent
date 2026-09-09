@@ -136,21 +136,49 @@ def get_place_insight(place_id: str) -> ImageInsight | None:
     return _preferred(images) if images else None
 
 
-def get_image_insight(place_id: str, image_url: str | None) -> ImageInsight | None:
-    """`place_id`의 이미지 중 `image_url`과 정확히 일치하는 분석을 찾는다.
+@lru_cache
+def _by_source_url() -> dict[str, ImageInsight]:
+    """sourceUrl → 분석. `place_id`가 어긋나도 사진을 찾기 위한 보조 색인."""
+    index: dict[str, ImageInsight] = {}
+    for images in load_place_insights().values():
+        for image in images:
+            if image.source_url:
+                index[image.source_url] = image
+    return index
 
-    일치하는 게 없으면(예: 배경 이미지가 사전 분석 대상 상위 N곳에 못 든 경우)
-    인물 배경으로 쓸 만한 사진을 우선해 폴백한다 — place_id 자체가 안 맞으면
-    `None`. 사용자가 고른 사진이 명시되면 적합도와 무관하게 그 사진을 쓴다(사용자
-    선택이 우선이고, 부적합 사진은 애초에 노출하지 않는 것으로 막아야 한다).
+
+def get_image_insight(place_id: str, image_url: str | None) -> ImageInsight | None:
+    """`image_url`(= 백엔드가 보낸 원본 관광공사 이미지 URL)의 분석을 찾는다.
+
+    **`place_id`로 먼저 찾지만 그것만 믿지 않는다.** 백엔드 `Place.id`는
+    `@GeneratedValue(UUID)`라 DB를 새로 만들 때마다 값이 바뀌는데, 이 파일의
+    `placeId`는 특정 시점에 찍은 스냅샷이다. 그래서 실제 운영에서는 두 값이 거의
+    항상 어긋나고, 예전에는 그때마다 `None`을 반환해 **조명·설 자리·구도 사전 분석이
+    통째로 버려진 채 실시간 배경 분석으로 폴백**하고 있었다 — 에러도 로그도 없이.
+
+    `sourceUrl`은 관광공사 원본 URL이라 DB를 새로 만들어도 변하지 않는다. 따라서
+    place_id가 빗나가면 URL로 다시 찾는다. 사용자가 고른 사진이 명시되면 적합도와
+    무관하게 그 사진을 쓴다(사용자 선택이 우선이고, 부적합 사진은 애초에 노출하지
+    않는 것으로 막는다).
     """
     images = load_place_insights().get(place_id)
+
+    if image_url:
+        if images:
+            for image in images:
+                if image.source_url == image_url:
+                    return image
+        matched = _by_source_url().get(image_url)
+        if matched is not None:
+            if not images:
+                logger.info(
+                    "placeId가 맞지 않아 배경 이미지 URL로 사전 분석을 찾았습니다 (place=%s).",
+                    matched.place_name,
+                )
+            return matched
+
     if not images:
         return None
-    if image_url:
-        for image in images:
-            if image.source_url == image_url:
-                return image
     return _preferred(images)
 
 

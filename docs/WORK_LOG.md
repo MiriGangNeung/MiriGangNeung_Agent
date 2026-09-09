@@ -1,5 +1,87 @@
 # Work Log
 
+## 2026-09-09 — 장소 노출 필터 단일 출처화 + 배경 비율 보정 + 프롬프트 v6 (claude)
+
+- 시작: 시간 미기록
+- 완료: 2026-09-09 KST
+- 작업 agent: claude (Opus 5)
+
+### 작업 내용
+
+로컬에 프론트·백엔드를 함께 띄운 E2E 환경에서 실제 Gemini로 합성을 돌려보며 세 가지를
+고쳤다. 셋 다 프롬프트 문구가 약해서가 아니라 **데이터가 코드에 연결돼 있지 않아서**
+생긴 문제였다.
+
+1. **장소 노출 기준이 판정 결과와 무관했다.** 백엔드가 노션 「배경 사진 VLM 사전 분석
+   리포트」(23곳)가 아니라 팀 포즈 조사 문서(43곳)를 손으로 옮겨 적고 있었다. 교집합이
+   15곳뿐이었고, "설 자리 없음"으로 판정된 헌화로·소돌아들바위공원이 노출되고 있었다.
+   판정 결과를 기계가 읽는 산출물로 내보내 단일 출처로 삼았다 (ADR-0007).
+2. **사전 분석이 통째로 버려지고 있었다.** `get_image_insight()`가 `placeId`로만
+   조회하는데 백엔드 `Place.id`는 `@GeneratedValue(UUID)`라 DB를 새로 만들 때마다
+   바뀐다. 실측 결과 이름이 겹치는 15곳조차 **UUID 일치 0건**이었고, 매번 조용히
+   `None`을 반환해 실시간 배경 분석으로 폴백하고 있었다(에러도 로그도 없이).
+   `sourceUrl`(관광공사 원본 URL, DB 재생성과 무관)로 폴백하도록 고쳤다.
+3. **배경 비율이 어긋나 프레임의 47%를 모델이 창작하고 있었다.** 사용자가 안반데기
+   결과에서 "배추밭이 뭉개졌다"고 지적한 띠가 창작 영역의 경계였다 (ADR-0006).
+
+추가로 원근 앵커를 프롬프트 v6에 넣었다 (`docs/PROMPTS.md` 참고).
+
+### 주요 변경 파일
+
+- `scripts/export_place_filter.py` (신규) — 판정 규칙 3개를 코드로 고정, 23곳/54장 산출
+- `assets/places/viable_places.json` (신규, 생성물)
+- `app/pipeline/background_fit.py` (신규) — 배경을 요청 비율로 커버 크롭
+- `app/jobs/runner.py` — 합성 직전 `fit_background_to_aspect()` 호출
+- `app/places/insights.py` — `sourceUrl` 보조 색인으로 `placeId` 미스 복구
+- `app/pipeline/prompt.py` — `_perspective_anchor()`, `PROMPT_VERSION` v6
+- `prompts/composition_v6.md` (신규)
+- `docs/adr/0006-background-aspect-fit.md`, `docs/adr/0007-place-exposure-single-source.md` (신규)
+- `docs/AI_API_CONTRACT.md` — `promptVersion` v5 → v6
+
+### 테스트 결과
+
+`pytest -q` **200 통과**. `ruff check` 통과. `ruff format --check`는 신규 파일 전부
+통과하나, 기존 파일 10개(`regenerate.py`, `validate.py`, `gemini.py`, `scripts/*` 등)가
+이전부터 어긋나 있다 — 불필요한 리팩토링을 피하려 건드리지 않았다.
+
+Gemini 실호출 스모크 테스트(`AI_PROVIDER=gemini`, `gemini-3.1-flash-image`):
+
+| 장소 | 결과 | 소요 | attempts | 얼굴 유사도 |
+|---|---|---|---|---|
+| 안목해변 | DONE | 35초 | 1 | 0.516 |
+| 향호해변 | DONE | 34초 | **2** | 0.529 (1차 탈락) |
+| 경포해수욕장 | **FAILED** | 32초 | 1 | 0.483 |
+| 안반데기 (v5) | DONE | 31초 | 1 | 0.512 |
+| 안반데기 (v6) | DONE | 31초 | 1 | — |
+
+회당 약 $0.067 (이미지 1회 기준). 이미지 생성 호출 자체는 18초 내외다.
+
+### 문제와 해결 방법
+
+- **경포해수욕장이 `BACKGROUND_ALTERED`로 거부됐다.** 얼굴 유사도 0.483으로 통과했는데도
+  품질 게이트가 결과를 통째로 버려 사용자에게 아무것도 나가지 않았다.
+  `WARNING_REASON_CODES`에 `FACE_NOT_PRESERVED` 하나뿐이라 나머지 9개 사유는 전부
+  하드 리젝이다. **거부 대신 경고로 내릴지는 제품 결정이라 이번 범위에서 바꾸지 않았다.**
+- **원근 오차가 남았다.** v6 적용 후 발 위치·가로 배치는 지시에 붙었으나 머리 상단이
+  지시(48%)보다 5%p 높다. 생성 후 원근을 재고 다시 뽑는 게이트로 없앨 수 있지만
+  생성 호출이 늘고(추정 +45%) 대기가 31초 → 50초 이상이 되어 넣지 않았다. 대신 프론트에
+  "AI가 매번 새로 그려 어색할 수 있다"는 안내를 넣기로 했다(프론트 레포에서 처리).
+
+### 관련 commit
+
+이 항목 작성 시점에는 `feat/place-filter-and-background-fit` 브랜치에 커밋 예정.
+
+### 다음 담당자에게
+
+- `viable_places.json`은 **백엔드 `src/main/resources/data/viable-places.json`으로 복사**
+  해야 반영된다. 갱신 시 `scripts/export_place_filter.py --check`로 차이를 먼저 확인한다.
+- 리포의 `place_insights.json`은 54장인데 노션 데이터셋은 64장이다. 장소 목록(23곳)은
+  같지만 사진 수가 다르므로, 노션 생성 시점 버전으로 갱신할지 확인이 필요하다.
+- WORK_LOG에 v5(2026-08-31)와 얼굴 신원 보존(2026-09-07) 작업 기록이 빠져 있다.
+  정확한 시간을 확인할 수 없어 임의로 만들지 않았다.
+
+---
+
 ## 2026-08-24 (2) — 실시간 배경 이미지 분석 폴백 (claude)
 
 - 시작: 시간 미기록
