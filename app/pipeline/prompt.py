@@ -14,9 +14,9 @@ from app.core.config import get_settings
 from app.places.backgrounds import PlaceContext
 from app.schemas.generation import AspectRatio, StyleTag, VariationMode
 
-PROMPT_VERSION = "v5"
+PROMPT_VERSION = "v6"
 
-COMPOSITION_TEMPLATE = "composition_v5.md"
+COMPOSITION_TEMPLATE = "composition_v6.md"
 QUALITY_CHECK_TEMPLATE = "quality_check_v1.md"
 # 원본 배경을 함께 넘길 수 있을 때 쓰는 판. 배경 보존까지 비교한다.
 QUALITY_CHECK_WITH_BACKGROUND_TEMPLATE = "quality_check_v2.md"
@@ -67,6 +67,7 @@ def build_composition_prompt(
         .replace("{horizon_position}", place.horizon_position)
         .replace("{ground_plane}", place.ground_plane)
         .replace("{subject_zone}", place.subject_zone)
+        .replace("{perspective_anchor}", _perspective_anchor(place))
         .replace("{occluding_elements}", occluding)
         .replace("{outfit_direction}", place.outfit_direction or _DEFAULT_OUTFIT)
         .replace("{outfit_negative}", place.outfit_negative)
@@ -174,6 +175,64 @@ def _framing(place: PlaceContext) -> str:
     ):
         return "full-body, small in the frame — the subject zone below sets the exact size"
     return place.suggested_framing
+
+
+# 지평선이 화면 어디쯤인지. VLM은 upper/middle/lower로만 답한다.
+_HORIZON_FRACTION = {"upper": 0.33, "middle": 0.50, "lower": 0.67}
+
+# 성인의 눈높이는 정수리에서 키의 약 6% 아래에 있다. 눈높이를 지평선에 맞출 때
+# 머리 상단과 발 위치를 역산하는 데 쓴다.
+_EYE_BELOW_CROWN = 0.06
+
+
+def _perspective_anchor(place: PlaceContext) -> str:
+    """원근을 배경 기하에 못박는 문장.
+
+    안반데기 결과에서 사용자가 "풍차와 사람의 원근이 무시됐다"고 지적했다. 원인은
+    프롬프트가 크기 검산을 **알려진 크기의 인공물**(난간·문·차량)에만 의존한 것이다.
+    밭·해변·능선처럼 그런 물체가 하나도 없는 장면에서는 검산할 대상이 없어 모델이
+    임의로 키를 정하고, 멀리 있는 큰 지형지물(풍력발전기)에 사람을 맞추면서 사람이
+    풍경을 압도한다.
+
+    카메라가 eye-level이면 **같은 지면에 선 성인의 눈높이는 거리와 무관하게 항상
+    지평선 위에 온다.** 이건 추정이 아니라 투영 기하의 결과라, 기준 물체가 없는
+    장면에서도 항상 성립하는 유일한 앵커다. 여기에 subject_zone이 지정한 키(화면
+    높이 대비 %)를 결합하면 머리 상단과 발의 화면 위치가 수치로 결정된다.
+    """
+    perspective = (place.camera_perspective or "").lower()
+    horizon = _HORIZON_FRACTION.get((place.horizon_position or "").strip().lower())
+
+    if horizon is None or "eye-level" not in perspective:
+        # 앙각·부감이거나 지평선 위치를 모르면 수치를 지어내지 않는다.
+        return (
+            "- **Anchor the figure to the ground, not to the scenery.** Their size "
+            "follows from the surface their feet are on and how far that surface is "
+            "from the camera — never from how large a distant landmark looks."
+        )
+
+    lines = [
+        f"- **Eye line sits on the horizon.** The camera is {place.camera_perspective} "
+        f"with the horizon at {place.horizon_position} of the frame (about "
+        f"{horizon * 100:.0f}% down from the top). For an adult standing on the same "
+        "ground as the camera, the eyes land on that horizon line no matter how far "
+        "away they are — closer makes them bigger, but their eyes stay on it. If the "
+        "head towers well above the horizon, the figure is too large or floating."
+    ]
+
+    match = _ZONE_HEIGHT.search(place.subject_zone or "")
+    if match:
+        height = int(match.group(1)) / 100
+        head_top = horizon - _EYE_BELOW_CROWN * height
+        feet = horizon + (1 - _EYE_BELOW_CROWN) * height
+        if 0 <= head_top < feet <= 1.05:
+            lines.append(
+                f"- **Where that puts them**: at {match.group(1)}% of frame height, "
+                f"the top of the head is about {head_top * 100:.0f}% down from the top "
+                f"of the image and the feet about {feet * 100:.0f}% down. Place them "
+                "there. If your figure's head reaches higher than that, it is too big — "
+                "shrink the person, do not move the horizon."
+            )
+    return "\n".join(lines)
 
 
 def _style_direction(style_tags: list[StyleTag]) -> str:

@@ -19,6 +19,7 @@ from app.core.config import Settings
 from app.core.errors import SAFETY_ERROR_CODES, AiServiceError
 from app.jobs.store import JobRecord, JobStore
 from app.pipeline import safety, style
+from app.pipeline.background_fit import fit_background_to_aspect
 from app.pipeline.face_identity import face_ratio
 from app.pipeline.face_reference import build_face_reference
 from app.pipeline.finalize import finalize_image
@@ -137,6 +138,17 @@ class GenerationRunner:
             background_analysis=background_analysis,
             background_image_url=record.background_image_url,
         )
+        # 배경을 출력 비율로 미리 잘라 넘긴다. 이걸 안 하면 가로 3:2 관광 사진으로
+        # 세로 4:5를 만들라는 요청이 되어 모델이 프레임의 절반 가까이를 지어내고,
+        # 그 경계에서 질감이 뭉갠다 (app/pipeline/background_fit.py).
+        fit = fit_background_to_aspect(
+            background_image,
+            background_mime,
+            record.aspect_ratio,
+            subject_zone=place.subject_zone,
+        )
+        background_image, background_mime = fit.image, fit.mime
+
         # 얼굴이 화면에서 작게 찍힌 사진은 합성 모델이 얼굴을 복사하지 못하고
         # 재구성한다. 그런 사진에는 얼굴만 잘라 확대한 참조를 한 장 더 넘긴다.
         # 거부 조건이 아니라 "도움을 더 줄까"를 정하는 것이라 임계값은 널널하다.

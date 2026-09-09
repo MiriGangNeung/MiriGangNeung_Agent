@@ -53,7 +53,7 @@ VLM으로 오프라인 사전 분석해 장면·조명·분위기 리포트를 �
 - 비용·남용 제어: 멱등키 기반 중복 요청 캐시, 일별 예산 상한, 세션별 rate limit
 - 오류 코드 20종(`BACKGROUND_REQUIRED` 포함) + retryable 플래그, 백엔드 재시도 규칙과 정렬
 - 개인정보: EXIF/GPS 제거, 원본+배경 즉시 삭제, 결과 TTL 정리, 로그 민감정보 필터
-- 백엔드 계약 문서(`docs/AI_API_CONTRACT.md`), ADR-0001, ADR-0002, ADR-0003, ADR-0004
+- 백엔드 계약 문서(`docs/AI_API_CONTRACT.md`), ADR-0001 ~ ADR-0007
 - **배경 이미지 소싱 구조 재점검 및 수정** (ADR-0002 참고):
   - `onePickPlaceId` = 백엔드 `Place.id`(UUID)임을 계약에 명시. 이전에는 로컬 카탈로그가
     `anmok-beach` 같은 임의 슬러그를 써서 운영 요청과 절대 매칭되지 않는 상태였다.
@@ -64,6 +64,20 @@ VLM으로 오프라인 사전 분석해 장면·조명·분위기 리포트를 �
     `Place` 정보를 프롬프트 힌트로 바로 활용 (`app/places/backgrounds.py::resolve_place_context`).
   - 로컬 카탈로그(`assets/backgrounds/backgrounds.json`)는 `AI_PROVIDER=mock` 전용으로
     명확히 하고, 라이선스 미확인 상태를 반영해 전 항목 `usable: false`로 고정.
+- **장소·사진 노출 필터를 VLM 판정 결과 단일 출처로 통일** (ADR-0007, 2026-09-09):
+  `scripts/export_place_filter.py`가 `place_insights.json`에서 노출 규칙 3개
+  (`portraitViability != low`, 드론 항공샷 제외, `standableSurface` 존재)를 적용해
+  `assets/places/viable_places.json`(23곳/54장)을 생성한다. 백엔드는 이 파일 사본을
+  `/data/viable-places.json`으로 읽어 장소·사진 노출을 제한한다. 이전에는 백엔드가
+  다른 문서(팀 포즈 조사 43곳)를 손으로 옮겨 적어 판정 결과와 15곳만 겹쳤다.
+- **`placeId` 미스로 사전 분석이 버려지던 문제 수정** (2026-09-09):
+  `get_image_insight()`가 `placeId`로 못 찾으면 `sourceUrl`로 다시 찾는다. 백엔드
+  `Place.id`는 `@GeneratedValue(UUID)`라 DB 재생성 때마다 바뀌어, 실측에서 이름이
+  겹치는 15곳조차 UUID 일치가 0건이었고 조명·설 자리·구도 데이터가 매번 조용히
+  폐기되고 있었다.
+- **합성 전 배경 비율 보정** (ADR-0006, 2026-09-09): `app/pipeline/background_fit.py`가
+  배경을 요청 비율로 커버 크롭한다. 관광공사 사진은 가로 3:2, 요청은 세로 4:5라
+  이전에는 모델이 프레임의 47%를 창작했고 그 경계에서 질감이 뭉갰다.
 - pytest 전체 통과, ruff lint/format 통과 (정확한 개수는 아래 "테스트 결과" 대신
   `pytest -q` 실행 결과 참고 — 병합 이후 변동이 잦아 여기서는 숫자를 고정하지 않는다)
 - Docker 빌드·기동 검증 완료 (단일 컨테이너, mock provider, 2026-08-09 기준): `/health`·
