@@ -8,7 +8,11 @@ from app.api.deps import Runtime, get_runtime
 from app.core.errors import ERROR_SPECS
 from app.core.security import require_api_key
 from app.pipeline.prompt import PROMPT_VERSION
-from app.pipeline.safety import SAFETY_REASON_MESSAGES
+from app.pipeline.safety import (
+    SAFETY_REASON_MESSAGES,
+    WARNING_MESSAGES,
+    WARNING_REASON_CODES,
+)
 from app.schemas.generation import (
     AspectRatio,
     ErrorCodeSpec,
@@ -45,7 +49,13 @@ async def meta(runtime: Runtime = Depends(get_runtime)) -> MetaResponse:
             for spec in ERROR_SPECS.values()
         ],
         safetyReasonCodes=[
-            SafetyReasonSpec(code=code, message=message)
+            SafetyReasonSpec(
+                code=code,
+                # 경고로 나가는 코드는 결과를 받은 사용자에게 보일 문구가 따로 있다.
+                message=WARNING_MESSAGES.get(code, message),
+                severity="warn" if code in WARNING_REASON_CODES else "reject",
+            )
             for code, message in SAFETY_REASON_MESSAGES.items()
         ],
+        faceRegenerateMaxAttempts=runtime.settings.face_regenerate_max_attempts,
     )

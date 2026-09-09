@@ -398,3 +398,39 @@ def test_same_photo_and_same_background_is_deduped(client):
     second = _submit(client, backgroundImageUrl="https://tong.example/same.jpg")
 
     assert first.json()["providerJobId"] == second.json()["providerJobId"]
+
+
+def test_face_mismatch_does_not_fail_the_job(client, monkeypatch):
+    """얼굴이 달라도 Job은 DONE으로 끝나고 결과가 나온다.
+
+    얼굴이 화면에서 작게 찍힌 사진은 흔한 여행 사진이라, 그걸 이유로 결과를 못 받게
+    하면 정상 사용자가 대량으로 막힌다. 경고만 달고 결과는 준다.
+    """
+    from app.providers.base import QualityVerdict
+    from app.providers.mock import MockProvider
+
+    async def _mismatched(self, image, mime, background=None, background_mime=None,
+                          subject=None, subject_mime=None):
+        return QualityVerdict(False, "FACE_NOT_PRESERVED", {"face_matches_subject": False})
+
+    monkeypatch.setattr(MockProvider, "check_quality", _mismatched)
+
+    job_id = _submit(client).json()["providerJobId"]
+    payload = _poll_until_terminal(client, job_id)
+
+    assert payload["status"] == "DONE"
+    assert payload["safety"]["status"] == "PASSED"
+    # reasonCode에 남기면 백엔드가 실패로 오인한다. 경고 목록에만 실린다.
+    assert payload["safety"]["reasonCode"] is None
+    assert [w["code"] for w in payload["safety"]["warnings"]] == ["FACE_NOT_PRESERVED"]
+    assert client.get(f"/v1/generations/{job_id}/result").status_code == 200
+
+
+def test_meta_marks_face_mismatch_as_a_warning(client):
+    payload = client.get("/v1/meta").json()
+    by_code = {row["code"]: row for row in payload["safetyReasonCodes"]}
+
+    assert by_code["FACE_NOT_PRESERVED"]["severity"] == "warn"
+    assert by_code["BACKGROUND_ALTERED"]["severity"] == "reject"
+    # 백엔드가 폴링 타임아웃을 잡으려면 재시도 상한을 알아야 한다.
+    assert payload["faceRegenerateMaxAttempts"] >= 1

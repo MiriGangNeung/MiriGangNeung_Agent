@@ -131,6 +131,14 @@ export HF_TOKEN=<huggingface.co에서 무료 발급>
 - `GOOGLE_API_KEY`, `GEMINI_IMAGE_MODEL`, `GEMINI_VISION_MODEL`
 - `REDIS_HOST` — 비우면 인메모리 JobStore로 폴백
 - `DAILY_GENERATION_BUDGET`, `RATE_LIMIT_PER_SESSION_PER_HOUR` — 비용·남용 제어
+- `FACE_RECOGNITION_MODEL_PATH` — 얼굴 **신원** 판정 모델(SFace, opencv_zoo, Apache-2.0).
+  38MB라 리포에 커밋하지 않으므로 `scripts/download_models.sh`로 받는다. **없어도 서비스는
+  동작한다** — 합성 결과가 업로드한 본인인지 확인하고 아니면 다시 뽑는 단계만 생략되고,
+  합성은 1회로 끝난다. 상세는 `docs/adr/0005-face-identity-preservation.md`.
+- `FACE_SIMILARITY_TARGET`(0.45) / `FACE_SIMILARITY_WARN_BELOW`(0.30) / 
+  `FACE_REGENERATE_MAX_ATTEMPTS`(3) — 얼굴 신원 유사도 임계값과 재생성 상한.
+  `target`에 못 미치면 다시 뽑고, 상한을 다 쓰고도 `warn_below`에 못 미치면 결과는
+  주되 경고를 단다. 거부하지 않는다.
 - `FACE_MODEL_PATH` — 얼굴 검출 모델(B3/B4). `models/face_detection_yunet_2023mar.onnx`
   (YuNet, [opencv_zoo](https://github.com/opencv/opencv_zoo) 제공, Apache-2.0)을 리포에
   커밋해 뒀고 기본값도 그쪽을 가리킨다. 비우면 OpenCV 번들 Haar cascade로 폴백한다
