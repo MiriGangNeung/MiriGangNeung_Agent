@@ -169,14 +169,24 @@ async def test_face_mismatch_is_a_warning_not_a_rejection():
     assert "다시 만들어 보세요" in message
 
 
-async def test_safety_rejects_altered_background():
+async def test_safety_warns_on_altered_background_instead_of_rejecting():
+    """배경 변형은 결과를 버리지 않는다.
+
+    생성 모델은 배경을 복사하지 않고 다시 그리므로 어느 정도 변형은 필연이다.
+    실측에서 얼굴 유사도 0.483으로 잘 나온 결과가 이 사유 하나로 통째로 버려졌다.
+    """
     provider = _StubProvider(QualityVerdict(False, "BACKGROUND_ALTERED"))
 
-    with pytest.raises(AiServiceError) as excinfo:
-        await check_output(provider, b"x", "image/png", b"bg", "image/png")
+    status, reason = await check_output(provider, b"x", "image/png", b"bg", "image/png")
 
-    assert excinfo.value.code == "SAFETY_REJECTED_OUTPUT"
-    assert excinfo.value.retryable is False
+    assert status == SafetyStatus.PASSED
+    assert reason == "BACKGROUND_ALTERED"
+
+    code, message = warning_for(reason)
+    assert code == "BACKGROUND_ALTERED"
+    # 결과를 받은 사용자에게 "제공할 수 없습니다"라고 하면 앞뒤가 맞지 않는다.
+    assert "제공할 수 없습니다" not in message
+    assert "다시 만들어 보세요" in message
 
 
 @pytest.mark.parametrize(
