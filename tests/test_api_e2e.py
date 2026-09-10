@@ -426,11 +426,11 @@ def test_face_mismatch_does_not_fail_the_job(client, monkeypatch):
     assert client.get(f"/v1/generations/{job_id}/result").status_code == 200
 
 
-def test_meta_marks_face_mismatch_as_a_warning(client):
+def test_meta_marks_face_and_background_mismatch_as_warnings(client):
     payload = client.get("/v1/meta").json()
     by_code = {row["code"]: row for row in payload["safetyReasonCodes"]}
 
     assert by_code["FACE_NOT_PRESERVED"]["severity"] == "warn"
-    assert by_code["BACKGROUND_ALTERED"]["severity"] == "reject"
+    assert by_code["BACKGROUND_ALTERED"]["severity"] == "warn"
     # 백엔드가 폴링 타임아웃을 잡으려면 재시도 상한을 알아야 한다.
     assert payload["faceRegenerateMaxAttempts"] >= 1

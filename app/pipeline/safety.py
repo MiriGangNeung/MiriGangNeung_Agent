@@ -26,13 +26,22 @@ logger = logging.getLogger(__name__)
 # `FACE_NOT_PRESERVED`가 여기 있는 이유: 얼굴이 화면에서 작게 찍힌 사진은 흔한 여행
 # 사진인데, 그걸 이유로 결과를 아예 못 받게 하면 정상 사용자가 대량으로 막힌다.
 # 얼굴이 조금 다를 수 있다고 알려주고 다시 만들 기회를 주는 편이 낫다.
-WARNING_REASON_CODES = frozenset({"FACE_NOT_PRESERVED"})
+# `BACKGROUND_ALTERED`가 여기 있는 이유: 생성 모델은 배경 픽셀을 복사하는 게 아니라
+# 다시 그리므로 어느 정도 변형은 필연이고, "얼마나 달라져야 변형인가"의 기준은
+# 검사기가 쥐고 있다. 실측에서 얼굴 유사도 0.483으로 잘 나온 결과가 이 사유 하나로
+# 통째로 버려졌다 — 사용자는 30초를 기다린 끝에 빈손으로 끝난다. 배경이 실제와
+# 다를 수 있다는 것은 합성 요청 단계에서 미리 안내하고, 결과는 경고와 함께 준다.
+WARNING_REASON_CODES = frozenset({"FACE_NOT_PRESERVED", "BACKGROUND_ALTERED"})
 
 # 경고로 나갈 때 쓰는 문구. 거부 문구("제공할 수 없습니다")를 그대로 쓰면 결과를 받은
 # 사용자에게 앞뒤가 맞지 않는다.
 WARNING_MESSAGES: dict[str, str] = {
     "FACE_NOT_PRESERVED": (
         "얼굴이 실제 모습과 조금 다르게 표현됐을 수 있습니다. "
+        "마음에 들지 않으면 다시 만들어 보세요."
+    ),
+    "BACKGROUND_ALTERED": (
+        "배경이 원본 사진과 다소 다르게 표현됐을 수 있습니다. "
         "마음에 들지 않으면 다시 만들어 보세요."
     ),
 }

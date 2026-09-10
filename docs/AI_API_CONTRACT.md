@@ -326,16 +326,22 @@ python scripts/export_openapi.py --check
 | `PROPORTION_ERROR` | 신체 비율이 사람의 것이 아님 (등신·다리 길이) |
 | `ANATOMY_ERROR` | 손발 개수·관절 등 신체 오류, 하체 소실 |
 | `SCENE_SCALE_BROKEN` | 인물과 배경의 크기·원근 불일치 |
-| `BACKGROUND_ALTERED` | 배경 관광지 사진이 원본과 다르게 변형됨 (간판 글자 등) |
 | `PERSON_COUNT_MISMATCH` | 합성된 인물 수가 1이 아님 |
 | `SEVERE_ARTIFACTS` | 결과 품질이 기준 미달 |
 | `PROVIDER_BLOCKED` | 공급자 자체 안전 필터가 차단 |
 
 ### 경고 — 결과는 주되 알려야 하는 것 (`safety.warnings`)
 
-**`FACE_NOT_PRESERVED`는 더 이상 Job을 실패시키지 않는다.** 얼굴이 화면에서 작게 찍힌
-사진은 흔한 여행 사진이라, 그걸 이유로 결과를 못 받게 하면 정상 사용자가 대량으로
-막힌다. 대신 결과를 그대로 주고 `safety.warnings`에 실어 보낸다.
+**`FACE_NOT_PRESERVED`와 `BACKGROUND_ALTERED`는 Job을 실패시키지 않는다.** 결과를 그대로
+주고 `safety.warnings`에 실어 보낸다.
+
+- `FACE_NOT_PRESERVED` — 얼굴이 화면에서 작게 찍힌 사진은 흔한 여행 사진이라, 그걸
+  이유로 결과를 못 받게 하면 정상 사용자가 대량으로 막힌다.
+- `BACKGROUND_ALTERED` (2026-09-10 변경) — 생성 모델은 배경 픽셀을 복사하는 게 아니라
+  다시 그리므로 어느 정도 변형은 필연이고, "얼마나 달라져야 변형인가"의 기준은 검사기가
+  쥐고 있다. 실측에서 얼굴 유사도 0.483으로 잘 나온 결과가 이 사유 하나로 통째로
+  버려졌다. 배경이 실제와 다를 수 있다는 것은 합성 요청 단계에서 미리 안내하고,
+  결과는 경고와 함께 준다.
 
 ```json
 {
@@ -349,6 +355,13 @@ python scripts/export_openapi.py --check
     ]
   }
 }
+```
+
+`BACKGROUND_ALTERED`도 같은 형태로 나간다:
+
+```json
+{ "code": "BACKGROUND_ALTERED",
+  "message": "배경이 원본 사진과 다소 다르게 표현됐을 수 있습니다. 마음에 들지 않으면 다시 만들어 보세요." }
 ```
 
 - `warnings`는 **선택 필드**다. 무시해도 기존 연동은 그대로 동작한다.
