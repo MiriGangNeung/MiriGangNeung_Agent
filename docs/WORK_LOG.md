@@ -1,5 +1,49 @@
 # Work Log
 
+## 2026-09-14 — GitHub Actions CI: main 병합 시 배포 이미지 게시 (claude)
+
+- 시작: 시간 미기록
+- 완료: 2026-09-14 KST
+- 작업 agent: claude (Opus 5)
+
+### 작업 내용
+
+팀원들이 main에 병합할 때마다 배포용 결과물이 자동으로 만들어지도록
+`.github/workflows/ci.yml`을 추가했다.
+
+| 이벤트 | 동작 |
+|---|---|
+| PR (→ main) | `ruff check .` → `pytest -q` → Docker 이미지 빌드 (게시 안 함) |
+| main 병합 | 같은 검사 → 이미지 빌드 → `ghcr.io/mirigangneung/mirigangneung_agent` 게시 (`latest`, `sha-<커밋>`) |
+
+함께 고친 것:
+
+- **Dockerfile이 얼굴 인식 모델 없이 이미지를 만들고 있었다.** SFace(38MB)는 git에서
+  빠져 있어 새로 clone한 곳에서 빌드하면 파일이 없는데, 서비스는 에러 없이 얼굴 유사도
+  판정·재생성만 조용히 꺼진 채 뜬다. 빌드 중에 `scripts/download_models.sh`로 받고
+  sha256을 확인하게 했다.
+- **`ruff check .`가 기존부터 실패하고 있었다.** 9건 전부 `scripts/colab_vlm_server.ipynb`
+  (셀마다 다시 import하는 게 정상인 노트북)에서 나와, `pyproject.toml`에서 `*.ipynb`를
+  제외했다.
+
+`ruff format --check`는 넣지 않았다. 이 작업과 무관한 기존 파일 10개가 어긋나 있어
+넣으면 모든 PR이 실패한다.
+
+### 테스트 결과
+
+PR #7 CI 실행(34804683500): Lint & test 44초, Build image 1분 37초, 모두 성공.
+CI 환경에는 모델 파일이 없었고, 빌드 로그에서 다운로드와
+`models/face_recognition_sface_2021dec.onnx: OK`(체크섬 통과)를 확인했다.
+로컬에서도 모델을 뺀 채 `pytest -q` 200개 통과를 확인했다.
+
+### 다음 담당자에게
+
+- 처음 게시되는 GHCR 패키지는 **비공개**가 기본이다. 배포 서버에서 받으려면 조직
+  Packages 설정에서 공개로 바꾸거나 서버에서 토큰으로 `docker login` 해야 한다.
+- 서버 자동 배포는 아직 없다. 배포 서버가 정해지면 `latest`를 받아가는 단계를 붙인다.
+
+---
+
 ## 2026-09-10 — BACKGROUND_ALTERED를 거부에서 경고로 (claude)
 
 - 시작: 시간 미기록
