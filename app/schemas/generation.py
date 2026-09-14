@@ -8,6 +8,7 @@ status 값은 백엔드 `CompositionStatus` enum과 1:1로 정렬한다 (새 값
 from __future__ import annotations
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -201,3 +202,6 @@ class HealthResponse(BaseModel):
     status: str
     jobStore: str
     provider: str
+    # 얼굴 인식 모델(SFace) 로드 여부. `unavailable`이어도 서비스는 동작하므로 `status`는
+    # 그대로 ok다 — 다만 얼굴 비교·재생성·얼굴 경고가 꺼진 상태라 배포 후 확인해야 한다.
+    faceRecognition: Literal["ready", "unavailable"]

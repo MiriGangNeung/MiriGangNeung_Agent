@@ -1,5 +1,40 @@
 # Work Log
 
+## 2026-09-14 (2) — Colab 노트북 삭제 + `/health`에 얼굴 인식 모델 상태 (claude)
+
+- 시작: 시간 미기록
+- 완료: 2026-09-14 KST
+- 작업 agent: claude (Opus 5)
+
+### 작업 내용
+
+1. **`scripts/colab_vlm_server.ipynb` 삭제.** Colab T4에서 Qwen2.5-VL-7B를 서빙해
+   `place_insights.json`(2026-08-27)을 만들던 일회성 도구다. Dockerfile도 앱 코드도 쓰지
+   않았다. `analyze_top_places.py`에 남아 있던 노트북 안내는 지우고, 노트북이 정의하던
+   `POST /analyze` 계약(요청·응답 JSON)을 스크립트 docstring으로 옮겼다. CI 작업 때
+   넣었던 `*.ipynb` 린트 제외 규칙도 필요 없어져 되돌렸다.
+2. **`/health`에 `faceRecognition: ready|unavailable` 추가.** SFace 모델은 git에 없어
+   새로 받은 환경에서 빠지기 쉽고, 빠져도 서비스는 에러 없이 떠서 얼굴 비교·재생성·
+   `FACE_NOT_PRESERVED` 경고만 조용히 꺼진다. 배포 이미지는 CI가 모델을 받아 체크섬까지
+   확인하지만(PR #7), Docker 없이 실행하는 경우는 여전히 드러나지 않았다. 서비스 자체는
+   정상이므로 `status`는 `ok`를 유지한다 — 헬스체크 실패로 컨테이너가 재시작되면 안 된다.
+
+### 주요 변경 파일
+
+- `scripts/colab_vlm_server.ipynb` (삭제), `scripts/analyze_top_places.py`, `pyproject.toml`
+- `app/pipeline/face_identity.py` — `recognition_model_ready()`
+- `app/schemas/generation.py`, `app/api/routes_meta.py`
+- `tests/test_api_e2e.py` — 두 상태 모두 테스트
+- `docs/openapi.json` (재생성), `docs/AI_API_CONTRACT.md` — **필드 추가, 백엔드 영향 없음**
+
+### 테스트 결과
+
+`pytest -q` **201 통과**, `ruff check .` 통과(노트북 제외 규칙 없이), `export_openapi.py --check` 통과.
+실서버에서 모델 파일을 넣고 뺀 채로 각각 재시작해
+`"faceRecognition":"ready"` / `"unavailable"`이 나오는 것을 확인했다.
+
+---
+
 ## 2026-09-14 — GitHub Actions CI: main 병합 시 배포 이미지 게시 (claude)
 
 - 시작: 시간 미기록

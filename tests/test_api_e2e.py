@@ -12,6 +12,7 @@ import time
 import pytest
 from PIL import Image
 
+from app.pipeline import face_identity
 from app.pipeline.validate import FaceBox, ValidationReport
 from app.schemas.generation import JobStatus
 from tests.conftest import TEST_API_KEY, make_image_bytes
@@ -48,12 +49,32 @@ def _poll_until_terminal(client, job_id: str, timeout: float = 15.0) -> dict:
     pytest.fail(f"Job이 제한 시간 내에 끝나지 않았습니다: {payload.get('status')}")
 
 
-def test_health_is_open_without_api_key(client):
+def test_health_is_open_without_api_key(client, monkeypatch):
+    monkeypatch.setattr(face_identity, "_recognizer", lambda: object())
     client.headers.pop("X-API-Key", None)
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "jobStore": "memory", "provider": "mock"}
+    assert response.json() == {
+        "status": "ok",
+        "jobStore": "memory",
+        "provider": "mock",
+        "faceRecognition": "ready",
+    }
+
+
+def test_health_reports_missing_face_recognition_model(client, monkeypatch):
+    """모델이 없으면 서비스는 뜨지만 얼굴 보존 기능이 조용히 꺼진다. /health로 드러나야 한다.
+
+    SFace 모델은 git에 없어 새로 받은 환경에서는 빠지기 쉽다. 그래도 서비스 자체는
+    정상이므로 status는 ok를 유지한다 — 헬스체크 실패로 컨테이너가 재시작되면 안 된다.
+    """
+    monkeypatch.setattr(face_identity, "_recognizer", lambda: None)
+
+    body = client.get("/health").json()
+
+    assert body["status"] == "ok"
+    assert body["faceRecognition"] == "unavailable"
 
 
 def test_requires_api_key(client):

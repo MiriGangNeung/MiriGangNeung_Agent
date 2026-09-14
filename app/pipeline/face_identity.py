@@ -148,4 +148,18 @@ def face_ratio(image: bytes) -> float | None:
     return max(f.h for f in faces) / height
 
 
-__all__ = ["face_similarity", "face_ratio", "SFACE_REFERENCE_COSINE"]
+def recognition_model_ready() -> bool:
+    """얼굴 인식 모델이 로드돼 신원 유사도 판정이 실제로 켜져 있는지.
+
+    모델이 없어도 서비스는 에러 없이 뜨고, 얼굴 비교·재생성·FACE_NOT_PRESERVED 경고만
+    조용히 꺼진다. 배포 직후 `/health`로 이 사실이 드러나게 하려고 노출한다.
+    """
+    return _recognizer() is not None
+
+
+__all__ = [
+    "face_similarity",
+    "face_ratio",
+    "recognition_model_ready",
+    "SFACE_REFERENCE_COSINE",
+]

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import Runtime, get_runtime
 from app.core.errors import ERROR_SPECS
 from app.core.security import require_api_key
+from app.pipeline.face_identity import recognition_model_ready
 from app.pipeline.prompt import PROMPT_VERSION
 from app.pipeline.safety import (
     SAFETY_REASON_MESSAGES,
@@ -26,7 +27,12 @@ router = APIRouter(tags=["meta"])
 
 @router.get("/health", response_model=HealthResponse)
 async def health(runtime: Runtime = Depends(get_runtime)) -> HealthResponse:
-    return HealthResponse(status="ok", jobStore=runtime.store.name, provider=runtime.provider.name)
+    return HealthResponse(
+        status="ok",
+        jobStore=runtime.store.name,
+        provider=runtime.provider.name,
+        faceRecognition="ready" if recognition_model_ready() else "unavailable",
+    )
 
 
 @router.get("/v1/meta", response_model=MetaResponse, dependencies=[Depends(require_api_key)])

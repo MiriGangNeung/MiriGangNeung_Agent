@@ -224,7 +224,17 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
 
 ### `GET /health`
 
-인증 불필요. `{"status": "ok", "jobStore": "redis"|"memory", "provider": "gemini"|"mock"}`.
+인증 불필요.
+
+```json
+{ "status": "ok", "jobStore": "redis"|"memory", "provider": "gemini"|"mock",
+  "faceRecognition": "ready"|"unavailable" }
+```
+
+`faceRecognition` (2026-09-14 추가)은 얼굴 인식 모델(SFace) 로드 여부다. `unavailable`이어도
+합성은 정상 동작하므로 **`status`는 `ok`를 유지한다** — 헬스체크 실패로 컨테이너가 재시작되면
+안 되기 때문이다. 다만 그 상태에서는 얼굴 비교·재생성·`FACE_NOT_PRESERVED` 경고가 꺼져
+있으니, **배포 직후 이 값이 `ready`인지 확인한다.** 필드 추가일 뿐 기존 필드는 그대로다.
 
 ### `GET /v1/meta`
 
