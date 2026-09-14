@@ -356,6 +356,14 @@
       },
       "HealthResponse": {
         "properties": {
+          "faceRecognition": {
+            "enum": [
+              "ready",
+              "unavailable"
+            ],
+            "title": "Facerecognition",
+            "type": "string"
+          },
           "jobStore": {
             "title": "Jobstore",
             "type": "string"
@@ -372,7 +380,8 @@
         "required": [
           "status",
           "jobStore",
-          "provider"
+          "provider",
+          "faceRecognition"
         ],
         "title": "HealthResponse",
         "type": "object"

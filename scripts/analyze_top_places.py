@@ -29,9 +29,13 @@
     HF_VLM_MODEL  사용할 비전 지원 채팅 모델 (기본값은 --hf-model 참고)
     HF_ENDPOINT_URL
                   설정 시 HF Inference API 대신 이 URL(`POST {url}/analyze`)로
-                  호출한다. Colab에서 공개 VLM을 직접 서빙하고 ngrok으로 노출한
-                  엔드포인트를 가리키는 용도 — HF_TOKEN 없이 동작한다. 계약은
-                  `scripts/colab_vlm_server.ipynb` 참고.
+                  호출한다. 공개 VLM을 직접 서빙하는 엔드포인트(예: GPU 노트북을
+                  터널로 노출한 서버)를 가리키는 용도 — HF_TOKEN 없이 동작한다.
+                  계약은 `call_custom_endpoint_with_retry()` 참고.
+
+현재 커밋된 `place_insights.json`(2026-08-27)은 Colab T4에서 Qwen2.5-VL-7B를 서빙하던
+노트북으로 만들었다. 그 노트북은 서비스 실행과 무관한 일회성 도구라 삭제했고, 다시
+분석이 필요하면 HF Inference API 경로를 쓰거나 아래 계약대로 엔드포인트를 띄운다.
 """
 
 from __future__ import annotations
@@ -525,10 +529,14 @@ def call_custom_endpoint_with_retry(
     *,
     max_retries: int = 3,
 ) -> dict:
-    """`scripts/colab_vlm_server.ipynb`가 노출하는 `POST {endpoint_url}/analyze`를 호출한다.
+    """직접 서빙하는 VLM 엔드포인트의 `POST {endpoint_url}/analyze`를 호출한다.
 
-    HF Inference API와 계약을 맞추지 않고 자체 JSON 계약을 쓴다(호출부·서버 양쪽을
-    이 리포에서 관리하므로). ngrok 콜드 스타트/일시적 502·503도 감안해 재시도한다.
+    HF Inference API와 계약을 맞추지 않고 자체 JSON 계약을 쓴다.
+
+        요청: {"image_b64": <base64>, "mime": "image/jpeg", "prompt": <str>, "max_tokens": 500}
+        응답: {"text": <모델이 생성한 JSON 문자열>}
+
+    터널(ngrok 등) 콜드 스타트와 일시적 502·503을 감안해 재시도한다.
     """
     payload = {
         "image_b64": base64.b64encode(image_bytes).decode(),

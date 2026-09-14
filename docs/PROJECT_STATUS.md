@@ -75,6 +75,8 @@ VLM으로 오프라인 사전 분석해 장면·조명·분위기 리포트를 �
   `Place.id`는 `@GeneratedValue(UUID)`라 DB 재생성 때마다 바뀌어, 실측에서 이름이
   겹치는 15곳조차 UUID 일치가 0건이었고 조명·설 자리·구도 데이터가 매번 조용히
   폐기되고 있었다.
+- **`/health`에 얼굴 인식 모델 상태 표시** (2026-09-14): `faceRecognition: ready|unavailable`. 모델이 없으면 서비스는 뜨지만 얼굴 비교·재생성·얼굴 경고가 조용히 꺼지므로, 배포 후 확인할 수 있게 했다. `status`는 `ok` 유지.
+- **Colab VLM 노트북 삭제** (2026-09-14): `place_insights.json`을 만들던 일회성 도구로 서비스 실행과 무관했다. 재분석이 필요하면 `scripts/analyze_top_places.py`의 HF Inference API 경로나 `HF_ENDPOINT_URL` 계약을 쓴다.
 - **CI** (2026-09-14): `.github/workflows/ci.yml` — PR마다 `ruff check .`·`pytest`·이미지 빌드를 돌리고, main 병합 시 `ghcr.io/mirigangneung/mirigangneung_agent`에 `latest`·`sha-<커밋>` 이미지를 게시한다. 이미지 빌드 중 SFace 모델을 받아 체크섬을 확인한다.
 - **배경 변형(`BACKGROUND_ALTERED`)은 거부가 아니라 경고다** (2026-09-10): 결과를 그대로 주고 `safety.warnings`에 실어 보낸다. 생성 모델은 배경을 복사하지 않고 다시 그리므로 어느 정도 변형은 필연이라, 이를 이유로 결과를 버리면 정상 합성이 통째로 사라진다. 경고 사유는 이제 `FACE_NOT_PRESERVED`와 `BACKGROUND_ALTERED` 둘이다.
 - **합성 전 배경 비율 보정** (ADR-0006, 2026-09-09): `app/pipeline/background_fit.py`가
