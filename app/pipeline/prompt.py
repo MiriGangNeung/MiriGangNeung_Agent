@@ -14,9 +14,9 @@ from app.core.config import get_settings
 from app.places.backgrounds import PlaceContext
 from app.schemas.generation import AspectRatio, StyleTag, VariationMode
 
-PROMPT_VERSION = "v6"
+PROMPT_VERSION = "v7"
 
-COMPOSITION_TEMPLATE = "composition_v6.md"
+COMPOSITION_TEMPLATE = "composition_v7.md"
 QUALITY_CHECK_TEMPLATE = "quality_check_v1.md"
 # 원본 배경을 함께 넘길 수 있을 때 쓰는 판. 배경 보존까지 비교한다.
 QUALITY_CHECK_WITH_BACKGROUND_TEMPLATE = "quality_check_v2.md"
