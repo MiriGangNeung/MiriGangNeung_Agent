@@ -140,7 +140,7 @@ Base path: `/v1` (헬스체크만 예외로 루트의 `/health`)
   "metadata": {
     "provider": "gemini",
     "model": "gemini-3.1-flash-image",
-    "promptVersion": "v6",
+    "promptVersion": "v7",
     "onePickPlaceId": "9c1d4f2e-58a1-4b3a-9d2e-1f6a2b7c9d10",
     "createdAt": "2026-08-08T12:00:00+00:00",
     "completedAt": null,
@@ -156,13 +156,17 @@ Base path: `/v1` (헬스체크만 예외로 루트의 `/health`)
 §2-7) — 정확한 정산이 아니라 단위경제성 추적용 근사치다. `AI_PROVIDER=mock`이면 `0.0`.
 합성이 끝나면 공급자가 실제로 돌려준 값으로 다시 채워진다(보통 같은 값).
 
-`promptVersion`이 `v6`(2026-09-09~)다. **API 필드는 바뀌지 않는다** — 프론트·백엔드가
+`promptVersion`이 `v7`(2026-09-18~)다. **API 필드는 바뀌지 않는다** — 프론트·백엔드가
 고칠 것은 없고, 달라지는 것은 결과물의 성격과 거부 사유의 종류다.
 
 - v3~v4: 포즈·표정을 장면에 맞게 재조정하고, 조명을 배경 사진에서 직접 읽어 맞춘다.
 - v5: 인체 비율(7~7.5등신, 다리는 키의 절반)과 배경과의 스케일 정합을 수치로 강제하고,
   얼굴 보존을 최우선 규칙으로 올렸다. 의상은 장면 유형별 지침
   (`assets/places/outfit_guides.json`)을 따라 원본 옷을 유지한다.
+- v6: 기준 물체가 없는 열린 풍경에서도 성립하는 지평선 원근 앵커를 추가했다.
+- v7: 근접한 랜드마크(버스정류장·아치·등대 등)를 크기 기준으로 오인하는 문제, 있지도
+  않은 위치에 난간/구조물을 복제하는 문제, 낮은 난간에 사람을 걸치듯 배치하는 문제
+  세 가지를 고쳤다. 자세한 근거는 `docs/PROMPTS.md`의 v7 항목 참고.
 
 품질 검사도 함께 올라가서, **업로드한 인물 사진과 원본 배경을 검사기에 함께 넘겨**
 얼굴이 같은 사람인지·신체 비율이 사람의 것인지·배경이 보존됐는지를 대조한다. 그 결과
@@ -195,7 +199,7 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
   "metadata": {
     "provider": "gemini",
     "model": "gemini-3.1-flash-image",
-    "promptVersion": "v6",
+    "promptVersion": "v7",
     "onePickPlaceId": "9c1d4f2e-58a1-4b3a-9d2e-1f6a2b7c9d10",
     "createdAt": "2026-08-08T12:00:00+00:00",
     "completedAt": "2026-08-08T12:00:24+00:00",
@@ -248,7 +252,7 @@ Job 상태 조회. 응답 스키마는 위와 동일하되 `DONE`일 때 `result
   "provider": "gemini",
   "imageModel": "gemini-3.1-flash-image",
   "visionModel": "gemini-3.1-flash-lite",
-  "promptVersion": "v6",
+  "promptVersion": "v7",
   "supportedAspectRatios": ["1:1", "4:5", "9:16"],
   "maxUploadBytes": 10485760,
   "resultTtlSeconds": 86400,
