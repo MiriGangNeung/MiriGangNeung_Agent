@@ -1,0 +1,14 @@
+{
+  "_comment": "사람이 결과를 보고 직접 쓰는 사진 단위 배치 보정. place_insights.json(VLM 생성)과 pose_guides.json(장소 공통)보다 우선한다. 분석 스크립트가 덮어쓰지 않는다. 키는 관광공사 원본 이미지 URL(백엔드가 보내는 backgroundImageUrl)과 정확히 같아야 한다. 적는 필드만 바뀌고 나머지는 분석값을 그대로 쓴다.",
+  "images": {
+    "https://tong.visitkorea.or.kr/cms2/website/03/2828703.jpg": {
+      "place": "주문진 등대",
+      "reason": "분석값이 서는 곳을 '광장 오른쪽', 표면을 '데크 가운데와 광장 오른쪽' 두 곳으로, 가림 요소를 '나무 난간'으로 줘서 합성이 데크와 광장 사이 난간 선 위에 사람을 세우고 난간을 몸에 관통시켰다(2026-09 사용자 리뷰 2회). 장소 공통 지침도 이 사진에 없는 등대 입구·계단을 지목했다. 서는 곳을 나무 데크 길 안쪽으로 한정한다.",
+      "standableSurface": "the planks of the wooden boardwalk in the lower center, between its left and right railings",
+      "suggestedSubjectZone": "center of the wooden boardwalk, between its two railings, ~35% of frame height",
+      "occludingElements": [],
+      "poseDirection": "인물은 반드시 나무 데크 길 위, 좌우 난간 사이 안쪽에만 세운다. 두 발은 데크 널판 위에 두고, 몸이 어느 쪽 난간과도 겹치지 않도록 양쪽 난간에서 떨어진 데크 가운데에 둔다. 오른쪽의 돌 광장, 새 조각상 주변, 난간 바깥 풀밭에는 세우지 않는다. 데크를 따라 걷거나 바다·시내 쪽을 바라보는 자연스러운 3/4 측면 포즈를 취한다.",
+      "poseNegative": "난간 위나 난간 선에 걸쳐 선 인물, 난간이 몸을 관통하거나 몸과 겹침, 광장이나 조각상 옆에 선 인물, 난간 바깥에 선 인물"
+    }
+  }
+}
