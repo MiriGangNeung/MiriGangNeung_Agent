@@ -7,6 +7,24 @@
 계약 상세는 [`docs/AI_API_CONTRACT.md`](docs/AI_API_CONTRACT.md), 작업 규칙은
 [`AGENTS.md`](AGENTS.md)를 먼저 읽는다.
 
+## 전체 서비스에서의 위치
+
+```
+[FrontEnd]  React, Vercel            사진 업로드 · 진행 표시 · 결과/경고 표시
+    │  POST /api/v1/compositions (multipart, sessionId 포함) → 1.5초 간격 폴링
+    ▼
+[BackEnd]   Spring Boot :8080        배경 확정(Type1 사진만) · Job 기록 · 결과 보관(TTL)
+    │  POST /v1/generations → 2초 간격 상태 폴링 → 완료 시 결과 이미지 다운로드
+    ▼
+[Agent]     FastAPI :8100  ← 이 레포  검증 → 분석 → 합성 → 품질검사 → 마감
+    │
+    ▼
+[Google Gemini API]                  스타일 분석 · 이미지 합성 · 품질 검사
+```
+
+프론트는 이 서비스를 직접 부르지 않는다. 항상 백엔드를 거친다. 이 서비스가 외부에
+열려 있을 필요가 없어서, 배포 시에도 내부망에서만 접근하게 둔다(`~/miri-deploy` 구성 참고).
+
 ## 실행 (로컬)
 
 Python 3.10 이상.
@@ -67,14 +85,76 @@ curl -H "X-API-Key: $AI_API_KEY" \
 
 ## 파이프라인
 
-`POST /v1/generations` 요청 하나가 6단계를 거친다 (`app/jobs/runner.py`).
+`POST /v1/generations` 요청 하나가 아래 단계를 거친다 (`app/jobs/runner.py`).
+Job 상태는 `QUEUED → ANALYZING → COMPOSITING → QUALITY_CHECK → DONE | FAILED`다.
 
 ```
-검증(B3/B4) → 전처리(B5) → 스타일분석(B6, ANALYZING)
-  → 합성(E1~E4, COMPOSITING) → 안전성·품질검사(E5, QUALITY_CHECK) → 마감(E6/E9, DONE)
+[요청 접수 · 동기]  검증(B3/B4) → 전처리(B5) → 세션 rate limit · 일일 예산 확인 → Job 생성(202)
+        │
+[ANALYZING]        스타일 분석(B6)
+        │
+[COMPOSITING]      장소 컨텍스트 결정 → 배경 비율 맞춤 → (필요 시) 얼굴 참조 → 프롬프트 조립
+                   → 합성 → 얼굴 유사도 판정 → 미달이면 재합성 (최대 3회)
+        │
+[QUALITY_CHECK]    품질·안전성 검사(E5) → 경고 수집
+        │
+[DONE]             마감(E6/E9) → 결과 저장 · 입력 원본 즉시 삭제(B5)
 ```
 
-검증·전처리는 Job을 만들기 전에 동기로 실행되어, 부적절한 사진은 즉시 4xx로 차단된다(B4).
+**요청 접수 (동기).** 검증·전처리는 Job을 만들기 전에 실행되어, 부적절한 사진은 즉시
+4xx로 차단된다(B4). 얼굴이 없거나(`NO_PERSON_DETECTED`) 여러 명이거나(`MULTIPLE_PERSONS`),
+너무 흐리거나 가려진 사진, 형식·용량 위반이 여기서 걸린다. 통과하면 EXIF/GPS를 제거하고
+긴 변 1536px로 줄인 PNG로 정규화한다. 이어서 `sessionId`별 시간당 횟수
+(`RATE_LIMIT_PER_SESSION_PER_HOUR`, 기본 10)와 일일 총량(`DAILY_GENERATION_BUDGET`,
+기본 500)을 확인해 넘으면 `RATE_LIMITED` / `BUDGET_EXCEEDED`(429)로 거절한다.
+`sessionId`가 없으면 호출자 IP로 대체하는데, 이 서비스를 부르는 것은 백엔드 한 대뿐이라
+전 사용자가 카운터를 공유하게 된다 — 그래서 프론트가 브라우저 세션 ID를 항상 보낸다.
+
+**장소 컨텍스트 결정.** 배경 사진에 대해 "어디에 서고, 얼마나 크게, 어떤 빛인지"를 정한다.
+우선순위는 ① `assets/places/place_insights.json`(오프라인 VLM 사전 분석, 원본 사진 URL로
+매칭) → ② 개발용 카탈로그 → ③ 위 둘이 모두 없을 때만 이번 요청의 배경을 Gemini vision으로
+실시간 분석 → ④ 백엔드가 준 텍스트 필드 → ⑤ 범용 문구다. **요청 경로의 AI 판정은 이
+③ 폴백 하나뿐이고, 사전 분석이 있는 장소는 vision 호출이 늘지 않는다.**
+
+**배경 비율 맞춤.** 3:2 가로 관광 사진으로 4:5 세로를 만들라고 하면 모델이 프레임의
+상당 부분을 지어내 질감이 뭉개진다. 그래서 출력 비율로 먼저 잘라서(`subject_zone` 위치를
+살려서) 넘긴다.
+
+**프롬프트 조립.** `prompts/composition_v7.md`에 장소 컨텍스트를 채운다. 핵심 규칙:
+배경 픽셀 보존, 밟을 수 있는 표면에만 배치, 7~7.5등신 인체 비율, 장면 조명·색감 일치,
+얼굴 보존 최우선. 카메라가 eye-level이면 지평선 위치와 인물 크기(%)로 머리·발의 화면
+위치를 **수치로 계산해 주입**한다(`_perspective_anchor()`) — 풍경에 기준 물체가 없어도
+성립하는 크기 앵커다. 근접한 랜드마크(버스정류장·아치·등대)의 화면상 크기는 인물 크기
+기준이 아니며, 장면의 다른 곳에 있는 난간을 인물 위치로 복제하지 않는다. 버전별
+변경 사유는 [`docs/PROMPTS.md`](docs/PROMPTS.md).
+
+**얼굴 신원 재합성.** 생성은 확률적이라 같은 입력도 매번 다른 얼굴이 나온다. 합성 결과를
+로컬 SFace 임베딩으로 업로드 사진과 비교해(`FACE_SIMILARITY_TARGET` 0.45) 미달이면 다시
+뽑는다(최대 `FACE_REGENERATE_MAX_ATTEMPTS`=3). 판정이 로컬 CPU라 vision 호출은 늘지 않고
+이미지 생성 호출만 늘어난다. 상한까지 가면 가장 닮은 결과를 채택한다. 얼굴이 작게 찍힌
+사진(`FACE_RATIO_ASSIST_BELOW` 미만)에는 얼굴만 잘라 확대한 참조 이미지를 한 장 더 넘긴다.
+인식 모델이 없으면 이 단계만 생략되고 합성은 1회로 끝난다.
+
+**품질·안전성 검사.** 결과 이미지·원본 배경·업로드 인물 사진을 함께 Gemini vision에 넘겨
+얼굴 보존, 인체 비율, 배경 보존, 인물–배경 스케일, 신체 결손, 유해성을 본다.
+**거부**(`SAFETY_REJECTED_OUTPUT`, 자동 재시도 없음)와 **경고**(결과는 주고 문구만 붙임)를
+구분한다. `FACE_NOT_PRESERVED`·`BACKGROUND_ALTERED`는 정상 사용자가 대량으로 막히는 것을
+피하려고 경고로만 내려보낸다. 검사기 자체가 장애면 거부하지 않고 `UNKNOWN`으로 통과시킨다.
+
+**마감.** 출력 비율로 정리하고 메타데이터(`provider`, `model`, `promptVersion`, 장소 ID)를
+기록한다. 원본 인물 사진과 배경은 Job이 끝나는 즉시(성공·실패·취소 무관) 삭제한다.
+
+## 배경 사진 선정 원칙
+
+- 합성에는 한국관광공사 **Type1**(출처 표시만, 변경 허용) 사진만 쓴다. Type3(변경 금지)는
+  백엔드가 걸러서 넘기지 않는다.
+- 사용자에게 노출하는 장소·사진은 `assets/places/viable_places.json`이 정한다. 사전 분석에서
+  ① 인물 촬영 적합도가 `low`가 아니고 ② 드론 항공샷(`high-angle`)이 아니며 ③ 두 발로 설
+  표면이 있는 사진만 남긴다. 이 파일은 `scripts/export_place_filter.py`가 생성하고 백엔드가
+  `viable-places.json`으로 복사해 쓴다(단일 원천, 직접 편집 금지 — ADR-0007).
+- 원본 사진 자체에 있는 특성(예: 광각 로우앵글로 기울어진 건물)은 "배경을 그대로 쓴다"는
+  원칙에 따라 합성이 바꾸지 않는다. 그런 사진이 문제라면 프롬프트가 아니라 사진 선정에서
+  거른다.
 
 ## 프로젝트 구조
 

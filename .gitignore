@@ -49,3 +49,6 @@ test_results/
 # 부담이 커서 scripts/download_models.sh 로 받는다. 없어도 서비스는 동작한다
 # (신원 유사도 판정만 생략된다).
 models/face_recognition_sface_2021dec.onnx
+
+# SSH 개인키 — 공개 레포에 절대 올리지 않는다
+*.pem
