@@ -35,6 +35,7 @@ from app.places.outfit_guides import (
     get_outfit_common,
     get_outfit_scene_type,
 )
+from app.places.placement_overrides import get_placement_override
 from app.places.pose_guides import get_pose_guide, get_scene_type_guides
 from app.providers.base import BackgroundAnalysis
 
@@ -203,7 +204,9 @@ def resolve_place_context(
 
     어느 경로로 결정됐든, 마지막에 장소별 포즈 지침(`pose_guides.json`)과 의상
     지침(`outfit_guides.json`)을 붙인다 — 둘 다 사진이 아니라 장소·장면 유형에
-    딸린 정보라 위 우선순위와 무관하다.
+    딸린 정보라 위 우선순위와 무관하다. 사진 단위 배치 보정
+    (`placement_overrides.json`)이 있으면 분석값과 장소 지침보다 우선하며, 의상
+    지침이 보정된 배치를 보도록 그 전에 적용한다.
     """
     insight = get_image_insight(one_pick_place_id, background_image_url)
     context = _resolve_place_context(
@@ -214,7 +217,11 @@ def resolve_place_context(
         background_analysis=background_analysis,
         background_image_url=background_image_url,
     )
-    return _with_outfit_guide(_with_pose_guide(context, insight), insight)
+    context = _with_pose_guide(context, insight)
+    override = get_placement_override(background_image_url)
+    if override is not None:
+        context = override.apply(context)
+    return _with_outfit_guide(context, insight)
 
 
 def _with_outfit_guide(context: PlaceContext, insight: ImageInsight | None) -> PlaceContext:
