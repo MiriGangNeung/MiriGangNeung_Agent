@@ -17,6 +17,7 @@ from app.core.errors import AiServiceError
 from app.core.limits import enforce_daily_budget, enforce_session_rate_limit
 from app.core.security import require_api_key
 from app.jobs.store import JobRecord
+from app.pipeline import safety
 from app.pipeline.preprocess import preprocess_photo
 from app.pipeline.prompt import PROMPT_VERSION
 from app.pipeline.validate import validate_photo
@@ -97,12 +98,6 @@ async def create_generation(
             logger.info("동일 요청이라 기존 Job을 반환합니다.")
             return _respond(existing)
 
-    session = sessionId or (request.client.host if request.client else "")
-    enforce_session_rate_limit(
-        runtime.store, session, runtime.settings.rate_limit_per_session_per_hour
-    )
-    enforce_daily_budget(runtime.store, runtime.settings.daily_generation_budget)
-
     # 요구사항 B4: 부적절한 사진은 분석 전에 차단하고 즉시 안내한다.
     # 따라서 검증(B3/B4)과 전처리(B5)는 Job을 만들기 전에 동기로 처리한다.
     report = validate_photo(
@@ -114,6 +109,15 @@ async def create_generation(
     # 다인원 사진이면 주 피사체만 잘라낸 바이트가 돌아온다. 원본을 그대로 쓰면
     # 합성 프롬프트에 두 명이 들어가 엉뚱한 사람이 섞인다.
     clean_bytes, _ = preprocess_photo(report.data or data)
+
+    # 검증을 통과한 요청만 시간당 횟수·일일 예산에 센다. 검증은 로컬 CPU라 공급자
+    # 비용이 들지 않는데, 이걸 먼저 세면 얼굴 검출에 걸린 사진 몇 장으로 한 시간치
+    # 할당량이 사라진다 (실사용 리뷰에서 실제로 그렇게 소진됐다).
+    session = sessionId or (request.client.host if request.client else "")
+    enforce_session_rate_limit(
+        runtime.store, session, runtime.settings.rate_limit_per_session_per_hour
+    )
+    enforce_daily_budget(runtime.store, runtime.settings.daily_generation_budget)
 
     # 배경도 사진과 마찬가지로 Job을 만들기 전에 동기로 해석·검증한다. 실제 배경이
     # 하나도 없는 채로 Job을 만들면 COMPOSITING 단계에서야 실패가 드러나 사용자
@@ -138,6 +142,8 @@ async def create_generation(
         background_key=runtime.images.save_input(background_bytes, ".png"),
         idempotency_key=dedupe_key,
         status=JobStatus.QUEUED,
+        # 흐림·가림처럼 거부까지는 아닌 입력 사진 문제. 결과와 함께 그대로 전달한다.
+        safety_warnings=[safety.warning_for(code) for code in report.warnings],
         # 요청 접수 시점에 근사 비용을 미리 채운다 (검토 총평 §2-7). 합성이 끝나면
         # runner.py가 provider가 실제로 돌려준 값으로 다시 덮어쓴다.
         estimated_cost_usd=runtime.provider.estimated_cost_usd,

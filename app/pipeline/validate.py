@@ -15,7 +15,7 @@ from __future__ import annotations
 import io
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
@@ -29,15 +29,34 @@ logger = logging.getLogger(__name__)
 ALLOWED_FORMATS = frozenset({"JPEG", "PNG", "WEBP"})
 ALLOWED_MIME = frozenset({"image/jpeg", "image/png", "image/webp"})
 
-# 얼굴 ROI Laplacian 분산이 이 값보다 낮으면 초점이 맞지 않은 것으로 본다.
-BLUR_VARIANCE_THRESHOLD = 45.0
+# 얼굴 ROI Laplacian 분산. 이 값 아래면 합성해도 얼굴을 못 살릴 만큼 뭉갠 사진이라
+# 거부한다. 예전에는 45에서 바로 거부했는데, 인물사진 모드·부드러운 피부 보정이
+# 들어간 멀쩡한 휴대폰 사진이 대량으로 막혔다. 거부선을 내리고, 그 사이 구간은
+# 경고로만 알린다 (BLUR_WARN_THRESHOLD).
+BLUR_VARIANCE_THRESHOLD = 12.0
+# 이 값 아래면 "흐릴 수 있다"고 경고만 달고 합성은 진행한다.
+BLUR_WARN_THRESHOLD = 45.0
 # 얼굴이 전체 이미지에서 차지하는 최소 비율. 너무 작으면 합성에 쓸 디테일이 없다.
-MIN_FACE_AREA_RATIO = 0.004
+# 얼굴이 작은 사진에는 얼굴만 잘라 확대한 참조를 한 장 더 넘기므로(face_reference)
+# 예전 기준(0.004)만큼 엄격할 필요가 없다.
+MIN_FACE_AREA_RATIO = 0.0015
 # 눈 검출 ROI를 최소 이 높이까지 확대한 뒤 판정한다 (`_is_face_occluded` 참고).
 EYE_ROI_MIN_HEIGHT = 120
 # 여러 명이 찍힌 사진에서 가장 큰 얼굴이 두 번째보다 이 배수 이상 커야 주 피사체가
-# 분명하다고 본다 (`_crop_to_primary` 참고).
+# 분명하다고 본다 (`_crop_to_primary` 참고). 두 명이 확실히 찍힌 사진은 잘라내지
+# 않고 거부하는 것이 맞다 — 임의로 자르면 조용히 엉뚱한 사람으로 합성된다.
 PRIMARY_FACE_DOMINANCE = 1.5
+
+# 얼굴 검출 신뢰도. 높은 값으로 먼저 찾고, 한 명도 못 찾았을 때만 낮은 값으로 다시
+# 찾는다. 낮은 값 하나로 두면 배경 무늬·옷 주름이 두 번째 얼굴로 잡혀 1인 사진이
+# "여러 명"으로 거부된다(실사용 리뷰). 반대로 높은 값만 쓰면 정면이 아닌 얼굴을
+# 놓쳐 "인물 없음"이 된다.
+FACE_SCORE_STRICT = 0.85
+FACE_SCORE_LENIENT = 0.6
+
+# 결과를 막지 않고 경고로만 전달하는 입력 사진 문제.
+WARN_BLURRY = "INPUT_PHOTO_BLURRY"
+WARN_FACE_OCCLUDED = "INPUT_FACE_OCCLUDED"
 
 
 @dataclass
@@ -63,6 +82,8 @@ class ValidationReport:
     # 경우 원본이 아니라 잘라낸 이미지가 들어간다. 기본값은 호출부 호환을 위한 것이다.
     data: bytes = b""
     cropped_from_group: bool = False
+    # 거부까지는 아니지만 사용자에게 알릴 문제 (WARN_* 코드).
+    warnings: list[str] = field(default_factory=list)
 
 
 def validate_photo(
@@ -111,8 +132,14 @@ def validate_photo(
     if sharpness < BLUR_VARIANCE_THRESHOLD:
         raise AiServiceError("IMAGE_TOO_BLURRY")
 
+    # 흐림·가림은 합성을 막지 않는다. 검사기가 애매하게 걸러 정상 사진을 대량으로
+    # 돌려보내는 것보다, 결과를 주고 "덜 닮게 나올 수 있다"고 알리는 편이 낫다.
+    # 눈 검출(Haar)은 선글라스·측면·앞머리에서 특히 자주 틀린다.
+    warnings: list[str] = []
+    if sharpness < BLUR_WARN_THRESHOLD:
+        warnings.append(WARN_BLURRY)
     if _is_face_occluded(matrix, face):
-        raise AiServiceError("FACE_OCCLUDED")
+        warnings.append(WARN_FACE_OCCLUDED)
 
     return ValidationReport(
         format=image_format,
@@ -122,12 +149,11 @@ def validate_photo(
         sharpness=sharpness,
         data=data,
         cropped_from_group=cropped_from_group,
+        warnings=warnings,
     )
 
 
-def _crop_to_primary(
-    matrix: np.ndarray, faces: list[FaceBox]
-) -> tuple[np.ndarray, FaceBox] | None:
+def _crop_to_primary(matrix: np.ndarray, faces: list[FaceBox]) -> tuple[np.ndarray, FaceBox] | None:
     """가장 큰 얼굴만 남도록 잘라낸 (행렬, 얼굴). 주 피사체가 불분명하면 None.
 
     비슷한 크기로 나란히 선 단체 사진은 누가 주인공인지 알 수 없다. 그런 사진을
@@ -182,9 +208,7 @@ def _crop_to_primary(
 
 
 def _intersects(face: FaceBox, top: int, left: int, bottom: int, right: int) -> bool:
-    return (
-        face.x < right and face.x + face.w > left and face.y < bottom and face.y + face.h > top
-    )
+    return face.x < right and face.x + face.w > left and face.y < bottom and face.y + face.h > top
 
 
 def _encode_png(matrix: np.ndarray) -> bytes:
@@ -234,8 +258,19 @@ def detect_faces(matrix: np.ndarray) -> list[FaceBox]:
 
 
 def _detect_with_yunet(matrix: np.ndarray, model_path: str) -> list[FaceBox]:
+    faces = _yunet_pass(matrix, model_path, FACE_SCORE_STRICT)
+    if faces:
+        return faces
+    # 확신 있는 얼굴이 하나도 없을 때만 기준을 낮춘다. 이 경로로 찾은 얼굴은
+    # 1명이든 여러 명이든 이후 로직이 동일하게 다룬다.
+    return _yunet_pass(matrix, model_path, FACE_SCORE_LENIENT)
+
+
+def _yunet_pass(matrix: np.ndarray, model_path: str, score_threshold: float) -> list[FaceBox]:
     height, width = matrix.shape[:2]
-    detector = cv2.FaceDetectorYN.create(model_path, "", (width, height), 0.7, 0.3, 5000)
+    detector = cv2.FaceDetectorYN.create(
+        model_path, "", (width, height), score_threshold, 0.3, 5000
+    )
     _, faces = detector.detect(matrix)
     if faces is None:
         return []

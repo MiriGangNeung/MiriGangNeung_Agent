@@ -216,7 +216,8 @@ class GenerationRunner:
         record.safety_status = safety_status
         # 경고 사유는 결과를 막지 않는다. reasonCode 자리에 남기면 백엔드가 실패로
         # 오인할 수 있어, 경고 목록에만 싣고 reasonCode는 비워 둔다.
-        warnings: list[tuple[str, str]] = []
+        # 업로드 사진 검사 단계에서 붙은 경고(흐림·가림)를 여기서 지우지 않는다.
+        warnings: list[tuple[str, str]] = list(record.safety_warnings)
         if reason in safety.WARNING_REASON_CODES:
             warnings.append(safety.warning_for(reason))
             record.safety_reason_code = None
