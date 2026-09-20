@@ -78,16 +78,33 @@ def test_rejects_face_too_small_in_frame(monkeypatch):
     _expect("NO_PERSON_DETECTED", make_image_bytes(fmt="PNG"))
 
 
-def test_rejects_blurry_face(monkeypatch):
-    """단색(=Laplacian 분산 0) 얼굴 영역은 흐린 것으로 판정된다."""
+def test_rejects_completely_blurred_face(monkeypatch):
+    """단색(=Laplacian 분산 0) 얼굴 영역은 합성 불가라 여전히 거부한다."""
     monkeypatch.setattr(validate_module, "detect_faces", lambda _: [FaceBox(100, 100, 200, 200)])
     _expect("IMAGE_TOO_BLURRY", make_image_bytes(fmt="PNG"))
 
 
-def test_rejects_occluded_face(monkeypatch):
-    """노이즈 이미지는 선명하지만 눈이 검출되지 않으므로 가림으로 판정된다."""
+def test_warns_instead_of_rejecting_occluded_face(monkeypatch):
+    """눈이 검출되지 않아도 거부하지 않는다 — 경고만 달고 합성은 진행한다.
+
+    Haar 눈 검출은 선글라스·측면·앞머리에서 자주 틀려서, 이걸로 막으면 멀쩡한
+    사진이 대량으로 돌아간다.
+    """
     monkeypatch.setattr(validate_module, "detect_faces", lambda _: [FaceBox(100, 100, 200, 200)])
-    _expect("FACE_OCCLUDED", make_noise_image_bytes())
+
+    report = validate_photo(make_noise_image_bytes(), "image/png", **LIMITS)
+
+    assert validate_module.WARN_FACE_OCCLUDED in report.warnings
+
+
+def test_warns_on_soft_focus_but_rejects_only_extreme_blur(monkeypatch):
+    """살짝 흐린 사진은 경고로 통과시키고, 완전히 뭉갠 사진만 거부한다."""
+    monkeypatch.setattr(validate_module, "detect_faces", lambda _: [FaceBox(100, 100, 200, 200)])
+    monkeypatch.setattr(validate_module, "_face_sharpness", lambda *_: 20.0)
+
+    report = validate_photo(make_noise_image_bytes(), "image/png", **LIMITS)
+
+    assert validate_module.WARN_BLURRY in report.warnings
 
 
 def _staged_detector(monkeypatch, *stages: list[FaceBox]):

@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # 비용 제어
     daily_generation_budget: int = 500
-    rate_limit_per_session_per_hour: int = 10
+    rate_limit_per_session_per_hour: int = 30
 
     # 얼굴 검출 (B3/B4) — 비우면 OpenCV 번들 Haar cascade로 폴백
     face_model_path: str = ""

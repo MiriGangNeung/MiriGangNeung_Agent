@@ -106,8 +106,13 @@ def test_meta_publishes_error_and_safety_catalogs(client):
 
     reasons = {row["code"]: row["message"] for row in payload["safetyReasonCodes"]}
     # safety.reasonCode로 실제로 나갈 수 있는 값이 전부 카탈로그에 있어야 한다.
-    for code in ("FACE_NOT_PRESERVED", "PROPORTION_ERROR", "SCENE_SCALE_BROKEN",
-                 "BACKGROUND_ALTERED", "PERSON_COUNT_MISMATCH"):
+    for code in (
+        "FACE_NOT_PRESERVED",
+        "PROPORTION_ERROR",
+        "SCENE_SCALE_BROKEN",
+        "BACKGROUND_ALTERED",
+        "PERSON_COUNT_MISMATCH",
+    ):
         assert reasons[code]
 
 
@@ -297,6 +302,60 @@ def test_rate_limit_blocks_burst_from_same_session(client, monkeypatch):
     assert payload["retryable"] is True
 
 
+def test_rejected_photos_do_not_consume_the_hourly_quota(client, monkeypatch):
+    """검증에 걸린 사진은 시간당 횟수를 깎지 않는다.
+
+    검증은 로컬 CPU라 공급자 비용이 0인데, 이걸 먼저 세면 얼굴 검출에 걸린 사진
+    몇 장으로 한 시간치 할당량이 사라진다.
+    """
+    from app.api.deps import get_runtime
+    from app.core.errors import AiServiceError
+
+    monkeypatch.setattr(get_runtime().settings, "rate_limit_per_session_per_hour", 1)
+    monkeypatch.setattr(
+        "app.api.routes_generation.validate_photo",
+        lambda *_, **__: (_ for _ in ()).throw(AiServiceError("NO_PERSON_DETECTED")),
+    )
+
+    for attempt in range(3):
+        rejected = _submit(client, idempotencyKey=f"reject-{attempt}", sessionId="s-quota")
+        assert rejected.status_code == 422
+        assert rejected.json()["error"]["code"] == "NO_PERSON_DETECTED"
+
+    monkeypatch.setattr(
+        "app.api.routes_generation.validate_photo",
+        lambda data, mime, **kwargs: ValidationReport(
+            format="PNG", width=640, height=800, face=FaceBox(100, 100, 200, 200), sharpness=99.0
+        ),
+    )
+    accepted = _submit(client, idempotencyKey="accept-1", sessionId="s-quota")
+
+    assert accepted.status_code == 202
+
+
+def test_blurry_photo_is_accepted_with_a_warning(client, monkeypatch):
+    """흐린 사진은 거부하지 않고 경고를 달아 결과까지 준다."""
+    from app.pipeline.validate import WARN_BLURRY
+
+    monkeypatch.setattr(
+        "app.api.routes_generation.validate_photo",
+        lambda data, mime, **kwargs: ValidationReport(
+            format="PNG",
+            width=640,
+            height=800,
+            face=FaceBox(100, 100, 200, 200),
+            sharpness=20.0,
+            warnings=[WARN_BLURRY],
+        ),
+    )
+
+    job_id = _submit(client, idempotencyKey="blurry-1").json()["providerJobId"]
+    final = _poll_until_terminal(client, job_id)
+
+    assert final["status"] == JobStatus.DONE.value
+    assert [w["code"] for w in final["safety"]["warnings"]] == [WARN_BLURRY]
+
+
 def test_input_photo_is_deleted_after_job_completes(client):
     """요구사항 B5: 원본 사진과 배경 이미지는 Job이 끝나면 즉시 지운다."""
     from app.api.deps import get_runtime
@@ -430,8 +489,9 @@ def test_face_mismatch_does_not_fail_the_job(client, monkeypatch):
     from app.providers.base import QualityVerdict
     from app.providers.mock import MockProvider
 
-    async def _mismatched(self, image, mime, background=None, background_mime=None,
-                          subject=None, subject_mime=None):
+    async def _mismatched(
+        self, image, mime, background=None, background_mime=None, subject=None, subject_mime=None
+    ):
         return QualityVerdict(False, "FACE_NOT_PRESERVED", {"face_matches_subject": False})
 
     monkeypatch.setattr(MockProvider, "check_quality", _mismatched)
